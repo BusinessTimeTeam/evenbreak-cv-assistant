@@ -1,11 +1,15 @@
+# Fresh deployments generate a random suffix. An imported existing deployment
+# pins it via var.name_suffix so generated names keep matching the live resources.
 resource "random_string" "suffix" {
+  count   = var.name_suffix == "" ? 1 : 0
   length  = 4
   special = false
   upper   = false
 }
 
 locals {
-  resource_name        = "${var.basename}-${random_string.suffix.result}"
+  name_suffix          = var.name_suffix != "" ? var.name_suffix : one(random_string.suffix[*].result)
+  resource_name        = "${var.basename}-${local.name_suffix}"
   project_display_name = var.project_name != "" ? var.project_name : var.basename
 }
 
@@ -31,5 +35,6 @@ resource "digitalocean_project_resources" "project_resources" {
   project = local.active_project_id
   resources = [
     digitalocean_app.chat_ui.urn,
+    digitalocean_spaces_bucket.kb_docs.urn,
   ]
 }

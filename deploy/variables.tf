@@ -14,6 +14,26 @@ variable "_api_host" {
   description = "DigitalOcean API endpoint (internal use)"
 }
 
+variable "spaces_access_id" {
+  type        = string
+  default     = ""
+  description = "DigitalOcean Spaces access key ID (S3-compatible). Required to manage the knowledge base documents bucket."
+  sensitive   = true
+}
+
+variable "spaces_secret_key" {
+  type        = string
+  default     = ""
+  description = "DigitalOcean Spaces secret key (S3-compatible). Required to manage the knowledge base documents bucket."
+  sensitive   = true
+}
+
+variable "spaces_region" {
+  type        = string
+  default     = "tor1"
+  description = "Region for the Spaces bucket holding knowledge base documents. Co-located with the knowledge base (tor1) by default."
+}
+
 // =============================================================================
 // PROJECT CONFIGURATION
 // =============================================================================
@@ -28,6 +48,12 @@ variable "basename" {
   type        = string
   default     = "rag-assistant"
   description = "The base name used to auto-generate resource names."
+}
+
+variable "name_suffix" {
+  type        = string
+  default     = ""
+  description = "Fixed suffix for generated resource names. Leave empty for a fresh deployment (a random suffix is generated); set to the existing suffix when importing a deployment so names keep matching."
 }
 
 variable "project_name" {
@@ -116,6 +142,24 @@ variable "agent_k" {
   type        = number
   default     = 5
   description = "Number of knowledge base documents to retrieve per query."
+}
+
+variable "agent_post_setup_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether to run the post-creation step that attaches the KB and guardrails to the agent via the API. True for fresh deployments; set false when importing an existing deployment where these are already attached."
+}
+
+variable "agent_retrieval_method" {
+  type        = string
+  default     = "RETRIEVAL_METHOD_SUB_QUERIES"
+  description = "Knowledge base retrieval method for the agent."
+}
+
+variable "agent_provide_citations" {
+  type        = bool
+  default     = true
+  description = "Whether the agent returns citations for retrieved knowledge base content."
 }
 
 // =============================================================================

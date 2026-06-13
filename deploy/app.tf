@@ -4,6 +4,14 @@
 resource "digitalocean_app" "chat_ui" {
   depends_on = [digitalocean_gradientai_agent.rag_agent]
 
+  # The DO_API_TOKEN env var is a SECRET that the provider cannot read back, so
+  # the env set always shows as drift and every apply would redeploy the app.
+  # Env values are set correctly at create time; freeze them afterward so routine
+  # applies stay clean (AGENT_UUID/AGENT_NAME do not legitimately change).
+  lifecycle {
+    ignore_changes = [spec[0].service[0].env]
+  }
+
   spec {
     name   = "${local.resource_name}-chat"
     region = var.region

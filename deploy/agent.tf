@@ -12,13 +12,36 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
   max_tokens  = var.agent_max_tokens
   k           = var.agent_k
 
-  provide_citations = true
-  retrieval_method  = "RETRIEVAL_METHOD_SUB_QUERIES"
+  provide_citations = var.agent_provide_citations
+  retrieval_method  = var.agent_retrieval_method
+
+  # Guardrails are attached out-of-band (see null_resource.agent_post_setup) and
+  # the deployment block reflects live runtime state, so leave both to the API
+  # rather than letting Terraform detach guardrails or reset the deployment.
+  lifecycle {
+    ignore_changes = [
+      agent_guardrail,
+      deployment,
+      top_p,
+      api_keys,
+      api_key_infos,
+      chatbot_identifiers,
+      created_at,
+      route_uuid,
+      user_id,
+    ]
+  }
 }
 
 # Post-creation: attach KB and guardrails.
 # The terraform provider cannot attach these on create (godo SDK limitation).
+#
+# Gated by var.agent_post_setup_enabled (default true). A fresh deployment runs
+# it to wire up the agent. An imported existing deployment, where the KB and
+# guardrails are already attached, sets the flag false so this never runs.
 resource "null_resource" "agent_post_setup" {
+  count = var.agent_post_setup_enabled ? 1 : 0
+
   depends_on = [
     digitalocean_gradientai_agent.rag_agent,
     digitalocean_gradientai_knowledge_base.kb,

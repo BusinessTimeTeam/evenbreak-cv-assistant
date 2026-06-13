@@ -14,4 +14,13 @@ resource "digitalocean_gradientai_knowledge_base" "kb" {
       crawling_option = "PATH"
     }
   }
+
+  # Datasources (especially file uploads) are managed out-of-band: the provider
+  # cannot import a KB that has a file-upload datasource, and file uploads are
+  # inherently imperative. Source documents live in knowledge-base/data-sources/
+  # and are loaded via scripts. Ignore datasource drift so adding documents does
+  # not force the KB to be recreated.
+  lifecycle {
+    ignore_changes = [datasources, database_id]
+  }
 }

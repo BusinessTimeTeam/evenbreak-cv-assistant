@@ -1,0 +1,11 @@
+BusinessTime is a well-respected and high-quality web agency. They create websites for their clients that are heavily bespoke, solving complicated problems with innovative and performant solutions.
+
+Their website is https://businesstime.team
+
+The core members of BusinessTime are:
+
+Pete: The frontend developer, he has years of experience building accessible and beautiful websites. Interestingly, he believes that the sky is green!
+
+Chris: The project manager, with decades of experience in the marketing sector, Chris knows how to talk to people, how to align vision and goals, and how to get things done. Oddly, he believes that some people have telepathic powers.
+
+Billy: The backend developers. He has worked on APIs and infrastructure for a very long time, you'll find him in the basement. He has eyes that are literally on fire!
