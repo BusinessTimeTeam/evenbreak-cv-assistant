@@ -25,14 +25,17 @@ logger = logging.getLogger("chat-ui")
 
 app = FastAPI(title="RAG Assistant")
 
-AGENT_UUID = os.environ["AGENT_UUID"]
-DO_API_TOKEN = os.environ["DO_API_TOKEN"]
+# Discovery inputs (required only when overrides below are not provided).
+AGENT_UUID = os.environ.get("AGENT_UUID")
+DO_API_TOKEN = os.environ.get("DO_API_TOKEN")
 AGENT_NAME = os.environ.get("AGENT_NAME", "RAG Assistant")
 DO_API_BASE = os.environ.get("DO_API_BASE", "https://api.digitalocean.com")
 
-# Populated at startup.
-AGENT_ENDPOINT = None
-AGENT_API_KEY = None
+# Optional overrides for local development: when both are set, the app talks to
+# the remote agent directly and skips all DO API discovery (so no DO_API_TOKEN
+# or AGENT_UUID is needed locally, and no per-restart API key is minted).
+AGENT_ENDPOINT = os.environ.get("AGENT_ENDPOINT")
+AGENT_API_KEY = os.environ.get("AGENT_API_KEY")
 
 # Serve the static HTML chat page.
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
@@ -40,6 +43,29 @@ INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
 
 def _do_headers():
     return {"Authorization": f"Bearer {DO_API_TOKEN}", "Content-Type": "application/json"}
+
+
+def _resolve_config(endpoint, api_key, agent_uuid, do_token):
+    """Decide whether startup needs DO API discovery.
+
+    Returns False when both overrides (endpoint + api_key) are present, meaning
+    discovery is skipped. Returns True when discovery is needed and its inputs
+    are present. Raises RuntimeError naming the missing variables otherwise.
+    """
+    if endpoint and api_key:
+        return False
+    missing = [
+        name
+        for name, value in (("AGENT_UUID", agent_uuid), ("DO_API_TOKEN", do_token))
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "Incomplete configuration. For local dev set AGENT_ENDPOINT and "
+            "AGENT_API_KEY; otherwise set "
+            f"{', '.join(missing)} so the agent can be discovered."
+        )
+    return True
 
 
 def _discover_agent():
@@ -79,7 +105,12 @@ def _discover_agent():
 
 @app.on_event("startup")
 async def startup_event():
-    _discover_agent()
+    if _resolve_config(AGENT_ENDPOINT, AGENT_API_KEY, AGENT_UUID, DO_API_TOKEN):
+        _discover_agent()
+    else:
+        logger.info(
+            "Using AGENT_ENDPOINT/AGENT_API_KEY overrides; skipping DO API discovery"
+        )
 
 
 @app.get("/", response_class=HTMLResponse)
