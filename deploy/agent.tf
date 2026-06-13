@@ -16,7 +16,7 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
   provide_citations = var.agent_provide_citations
   retrieval_method  = var.agent_retrieval_method
 
-  # Guardrails are attached out-of-band (see null_resource.agent_post_setup) and
+  # Guardrails are attached out-of-band (see null_resource.agent_guardrails) and
   # the deployment block reflects live runtime state, so leave both to the API
   # rather than letting Terraform detach guardrails or reset the deployment.
   #
@@ -38,55 +38,39 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
   }
 }
 
-# Post-creation: attach KB and guardrails.
-# The terraform provider cannot attach these on create (godo SDK limitation).
-#
-# Gated by var.agent_post_setup_enabled (default true). A fresh deployment runs
-# it to wire up the agent. An imported existing deployment, where the KB and
-# guardrails are already attached, sets the flag false so this never runs.
-resource "null_resource" "agent_post_setup" {
-  count = var.agent_post_setup_enabled ? 1 : 0
+# Attach the knowledge base to the agent. Native provider resource (no curl):
+# the KB attachment is now first-class Terraform state. Depends implicitly on the
+# agent and KB via their ids. NOTE: on a brand-new KB that is still indexing, this
+# attach can fail; if so, just re-run `terraform apply` once indexing finishes.
+resource "digitalocean_gradientai_agent_knowledge_base_attachment" "kb" {
+  agent_uuid          = digitalocean_gradientai_agent.rag_agent.id
+  knowledge_base_uuid = digitalocean_gradientai_knowledge_base.kb.id
+}
 
-  depends_on = [
-    digitalocean_gradientai_agent.rag_agent,
-    digitalocean_gradientai_knowledge_base.kb,
-  ]
+# Attach guardrails to the agent. There is no provider resource for guardrail
+# attachment, so this stays an out-of-band API call. Runs only when at least one
+# guardrail UUID is supplied; re-runs if the set of UUIDs changes.
+resource "null_resource" "agent_guardrails" {
+  count = anytrue([
+    var.guardrail_jailbreak_uuid != "",
+    var.guardrail_content_mod_uuid != "",
+    var.guardrail_sensitive_data_uuid != "",
+  ]) ? 1 : 0
+
+  depends_on = [digitalocean_gradientai_agent.rag_agent]
 
   triggers = {
-    agent_id = digitalocean_gradientai_agent.rag_agent.id
-    kb_id    = digitalocean_gradientai_knowledge_base.kb.id
+    agent_id   = digitalocean_gradientai_agent.rag_agent.id
+    guardrails = "${var.guardrail_jailbreak_uuid},${var.guardrail_content_mod_uuid},${var.guardrail_sensitive_data_uuid}"
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       set -e
       AGENT_ID="${digitalocean_gradientai_agent.rag_agent.id}"
-      KB_ID="${digitalocean_gradientai_knowledge_base.kb.id}"
       TOKEN="${var.do_token}"
       API="https://api.digitalocean.com/v2/gen-ai"
 
-      # 1. Wait for KB indexing to complete (required before attachment).
-      echo "Waiting for KB indexing to complete..."
-      for i in $(seq 1 60); do
-        RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" "$API/knowledge_bases/$KB_ID" 2>/dev/null || echo "")
-        if echo "$RESP" | grep -q "INDEX_JOB_STATUS_COMPLETED"; then
-          echo "KB indexing complete"
-          break
-        fi
-        echo "  Waiting... (attempt $i/60)"
-        sleep 10
-      done
-
-      # 2. Attach KB to agent.
-      echo "Attaching KB to agent..."
-      curl -sf -X POST \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{}' \
-        "$API/agents/$AGENT_ID/knowledge_bases/$KB_ID"
-      echo "KB attached"
-
-      # 3. Attach guardrails to agent.
       GUARDRAILS=""
       %{if var.guardrail_jailbreak_uuid != ""~}
       GUARDRAILS="$GUARDRAILS{\"guardrail_uuid\":\"${var.guardrail_jailbreak_uuid}\",\"priority\":1},"
@@ -98,16 +82,14 @@ resource "null_resource" "agent_post_setup" {
       GUARDRAILS="$GUARDRAILS{\"guardrail_uuid\":\"${var.guardrail_sensitive_data_uuid}\",\"priority\":3},"
       %{endif~}
 
-      if [ -n "$GUARDRAILS" ]; then
-        GUARDRAILS=$(echo "$GUARDRAILS" | sed 's/,$//')
-        echo "Attaching guardrails..."
-        curl -sf -X POST \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "{\"guardrails\":[$GUARDRAILS]}" \
-          "$API/agents/$AGENT_ID/guardrails"
-        echo "Guardrails attached"
-      fi
+      GUARDRAILS=$(echo "$GUARDRAILS" | sed 's/,$//')
+      echo "Attaching guardrails..."
+      curl -sf -X POST \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"guardrails\":[$GUARDRAILS]}" \
+        "$API/agents/$AGENT_ID/guardrails"
+      echo "Guardrails attached"
     EOT
   }
 }

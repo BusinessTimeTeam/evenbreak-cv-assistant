@@ -208,6 +208,50 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 - **Chat UI**: A Python FastAPI application deployed on App Platform. It discovers the agent endpoint and creates an API key at startup.
 - **Resource naming**: All resources are suffixed with a random 4-character string to avoid naming collisions.
 
+## Known issues
+
+### The knowledge base's OpenSearch database is not Terraform-managed, and leaks on destroy
+
+A DO GenAI knowledge base requires an OpenSearch cluster as its vector store. The
+platform **auto-provisions its own managed cluster** (named `genai-*`) when the KB
+is created and records it in the KB's `database_id`.
+
+- **You cannot bring your own cluster.** We tried creating a
+  `digitalocean_database_cluster` and passing its id as the KB's `database_id`;
+  the platform ignored it and created its own anyway. So `database_id` is a
+  server-managed value and is listed in the KB's `ignore_changes`.
+- **Cost.** The auto-created cluster is the smallest OpenSearch tier
+  (`db-s-1vcpu-2gb`, ~$19.60/month) and is mandatory for RAG — there is no
+  smaller or serverless option.
+- **It leaks on destroy.** `terraform destroy` deletes the KB but **not** its
+  OpenSearch cluster. The same happens on any KB *recreation*. After a destroy or
+  recreate, delete the orphaned cluster manually so you stop paying for it:
+
+  ```bash
+  doctl databases list            # find the orphaned genai-* opensearch cluster
+  doctl databases delete <id>
+  ```
+
+### The knowledge base's datasources are ignored by Terraform
+
+The KB requires at least one *inline* datasource; the inline web crawler (the
+Evenbreak homepage) satisfies that. The Spaces document bucket is attached as a
+**separate** `knowledge_base_data_source` resource (`spaces_docs`), which the API
+then reports back as an extra datasource on the KB.
+
+Because the KB's `datasources` attribute is **force-new**, that mismatch would
+make every `terraform apply` *recreate the KB* (which also strands an OpenSearch
+cluster — see above). To prevent that, `datasources` is in the KB's
+`ignore_changes`.
+
+Consequences:
+
+- Editing the inline web-crawler URL **in config has no effect** (it's ignored),
+  and editing it directly in the console forces a KB recreation.
+- To add or remove document sources **without** recreating the KB, manage them as
+  separate `digitalocean_gradientai_knowledge_base_data_source` resources (like
+  `spaces_docs`) rather than editing the KB's inline `datasources` block.
+
 ## Chat UI
 
 The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:

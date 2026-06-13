@@ -96,13 +96,13 @@ variable "app_instance_size" {
 
 variable "_app_source_repo" {
   type        = string
-  default     = "digitalocean/marketplace-blueprints"
-  description = "GitHub repo for the app source code."
+  default     = "BusinessTimeTeam/evenbreak-cv-assistant"
+  description = "GitHub repo (owner/name) hosting the chat-ui app source. Deployed via the DigitalOcean GitHub integration, which must be authorized on this repo."
 }
 
 variable "_app_source_branch" {
   type        = string
-  default     = "master"
+  default     = "main"
   description = "Git branch for the app source code."
 }
 
@@ -138,12 +138,6 @@ variable "agent_top_p" {
   type        = number
   default     = 1
   description = "Nucleus sampling cutoff for inference (0.0-1.0)."
-}
-
-variable "agent_post_setup_enabled" {
-  type        = bool
-  default     = true
-  description = "Whether to run the post-creation step that attaches the KB and guardrails to the agent via the API. True for fresh deployments; set false when importing an existing deployment where these are already attached."
 }
 
 variable "agent_retrieval_method" {

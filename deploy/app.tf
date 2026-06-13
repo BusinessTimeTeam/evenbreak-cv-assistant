@@ -35,13 +35,16 @@ resource "digitalocean_app" "chat_ui" {
       instance_size_slug = var.app_instance_size
       http_port          = 8080
 
-      git {
-        repo_clone_url = "https://github.com/${var._app_source_repo}.git"
+      # Private org repo, so use the GitHub integration (not a public clone URL).
+      # Requires the DigitalOcean GitHub app to be authorized on this repo.
+      github {
+        repo           = var._app_source_repo
         branch         = var._app_source_branch
+        deploy_on_push = true
       }
 
-      source_dir      = "blueprints/rag-assistant/chat-ui"
-      dockerfile_path = "blueprints/rag-assistant/chat-ui/Dockerfile"
+      source_dir      = "chat-ui"
+      dockerfile_path = "chat-ui/Dockerfile"
 
       env {
         key   = "AGENT_UUID"
