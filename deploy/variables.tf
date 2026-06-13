@@ -72,26 +72,16 @@ variable "region" {
 // MODEL CONFIGURATION
 // =============================================================================
 
-variable "default_model" {
+variable "model_name" {
   type        = string
-  default     = "nvidia-nemotron-3-super-120b"
-  description = "Serverless inference model internal name (for reference/display only)."
+  default     = "OpenAI GPT-oss-20b"
+  description = "Display name of the serverless inference model. Resolved to a UUID via the digitalocean_gradientai_models data source (see models.tf)."
 }
 
-variable "model_uuid" {
+variable "embedding_model_name" {
   type        = string
-  description = "UUID of the serverless inference model. Resolved by do-terraform from the model internal name."
-}
-
-variable "embedding_model" {
-  type        = string
-  default     = "qwen3-embedding-0.6b"
-  description = "Embedding model internal name (for reference/display only)."
-}
-
-variable "embedding_model_uuid" {
-  type        = string
-  description = "UUID of the embedding model. Resolved by do-terraform from the model internal name."
+  default     = "Qwen3 Embedding 0.6B"
+  description = "Display name of the embedding model. Resolved to a UUID via the digitalocean_gradientai_models data source (see models.tf)."
 }
 
 // =============================================================================
@@ -142,6 +132,12 @@ variable "agent_k" {
   type        = number
   default     = 5
   description = "Number of knowledge base documents to retrieve per query."
+}
+
+variable "agent_top_p" {
+  type        = number
+  default     = 1
+  description = "Nucleus sampling cutoff for inference (0.0-1.0)."
 }
 
 variable "agent_post_setup_enabled" {

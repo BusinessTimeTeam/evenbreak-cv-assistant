@@ -19,3 +19,8 @@
 *.tfvars
 *.tfstate*
 resolved_models.json
+
+# Secrets sourced as env vars (keep env.sh.example, ignore the real one)
+env.sh
+.env
+scratch.txt

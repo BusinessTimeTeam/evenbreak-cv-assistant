@@ -6,11 +6,12 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
   region     = "tor1"
   project_id = local.active_project_id
 
-  model_uuid  = var.model_uuid
+  model_uuid  = local.model_uuid
   instruction = var.agent_instruction
   temperature = var.agent_temperature
   max_tokens  = var.agent_max_tokens
   k           = var.agent_k
+  top_p       = var.agent_top_p
 
   provide_citations = var.agent_provide_citations
   retrieval_method  = var.agent_retrieval_method
@@ -18,11 +19,15 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
   # Guardrails are attached out-of-band (see null_resource.agent_post_setup) and
   # the deployment block reflects live runtime state, so leave both to the API
   # rather than letting Terraform detach guardrails or reset the deployment.
+  #
+  # The remaining attributes are optional+writable in the provider but are
+  # actually server-generated (the schema should mark them computed). Without
+  # ignore_changes Terraform plans to null them out on every apply — which would
+  # wipe the agent's api_keys (used by the chat-ui), created_at, etc.
   lifecycle {
     ignore_changes = [
       agent_guardrail,
       deployment,
-      top_p,
       api_keys,
       api_key_infos,
       chatbot_identifiers,

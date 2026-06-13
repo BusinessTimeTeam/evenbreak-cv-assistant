@@ -1,8 +1,20 @@
 terraform {
+  required_version = ">= 1.9"
+
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
       version = "~> 2.85.0"
+    }
+    # Used by null_resource.agent_post_setup / kb_reindex glue.
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.3"
+    }
+    # Used by random_string.suffix for fresh-deployment resource names.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.9"
     }
   }
 }
