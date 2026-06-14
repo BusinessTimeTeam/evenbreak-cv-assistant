@@ -8,6 +8,7 @@ services:
     build:
       context: ./chat-ui
       dockerfile: Dockerfile
+      target: prod
     ports:
       - "8080:8080"
     env_file:
@@ -16,3 +17,16 @@ services:
       - ./chat-ui:/app
     command: >
       uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+
+  # Runs the chat-ui test suite against the live source (mounted), using the dev
+  # image (pytest installed). Not started by `docker compose up`; run it with:
+  #   docker compose run --rm chat-ui-test
+  chat-ui-test:
+    profiles: ["test"]
+    build:
+      context: ./chat-ui
+      dockerfile: Dockerfile
+      target: dev
+    volumes:
+      - ./chat-ui:/app
+    command: python -m pytest -v
