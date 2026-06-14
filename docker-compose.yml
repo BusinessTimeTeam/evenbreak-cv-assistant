@@ -1,0 +1,18 @@
+# Local development for the chat UI. Builds the same image App Platform ships,
+# but mounts the source and runs uvicorn with --reload so edits to main.py and
+# static/index.html apply without a rebuild. Connects outbound to the remote
+# managed agent using AGENT_ENDPOINT / AGENT_API_KEY from .env — no DO services
+# run locally and nothing is exposed inbound.
+services:
+  chat-ui:
+    build:
+      context: ./chat-ui
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    volumes:
+      - ./chat-ui:/app
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8080 --reload
