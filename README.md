@@ -261,18 +261,60 @@ The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:
 - Auto-discovers the agent's deployment URL and creates an API key on startup.
 - Maintains conversation history for multi-turn interactions.
 
-### Local development
+### Local development with Docker
 
-To run the chat UI locally (requires a deployed agent):
+The chat UI is a thin proxy to the remote DO-managed agent, so local development
+runs **only the chat UI** in a container — it connects outbound to the agent over
+HTTPS. The DO services (knowledge base, agent, guardrails) cannot run locally and
+do not need to be exposed; the agent endpoint is gated by a secret API key.
+
+Edits to `chat-ui/main.py` and `chat-ui/static/index.html` reload automatically.
+
+**1. Create your `.env`:**
 
 ```bash
-cd chat-ui
-pip install -r requirements.txt
-export AGENT_UUID=<your-agent-uuid>
-export DO_API_TOKEN=<your-token>
-export AGENT_NAME="RAG Assistant"
-uvicorn main:app --host 0.0.0.0 --port 8080
+cp .env.example .env
 ```
+
+`AGENT_ENDPOINT` is pre-filled with the current agent deployment URL. You only
+need to supply `AGENT_API_KEY`.
+
+**2. Mint an agent API key (one time).** Either:
+
+- **Console:** [DO console](https://cloud.digitalocean.com/) → **GenAI Platform →
+  Agents** → select the agent → **API Keys** → **Create Key** → copy the secret
+  key.
+
+- **API (`curl`):** with your DO API token and the agent UUID
+  (`terraform output agent_uuid` from `deploy/`):
+
+  ```bash
+  curl -s -X POST \
+    -H "Authorization: Bearer $DO_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"local-dev"}' \
+    "https://api.digitalocean.com/v2/gen-ai/agents/<AGENT_UUID>/api_keys" \
+    | python3 -c "import json,sys; print(json.load(sys.stdin)['api_key_info']['secret_key'])"
+  ```
+
+Paste the key into `.env` as `AGENT_API_KEY`. The key is reused across restarts —
+revoke it in the console when you no longer need it.
+
+**3. (Only if the agent was recreated)** refresh the endpoint:
+
+```bash
+cd deploy && terraform output agent_endpoint   # paste into .env as AGENT_ENDPOINT
+```
+
+**4. Run it:**
+
+```bash
+docker compose up
+```
+
+Open <http://localhost:8080>.
+
+> Running tests: `cd chat-ui && pip install -r requirements-dev.txt && python -m pytest`
 
 ## Security
 

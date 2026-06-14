@@ -8,6 +8,11 @@ output "agent_uuid" {
   description = "UUID of the managed RAG agent."
 }
 
+output "agent_endpoint" {
+  value       = "${digitalocean_gradientai_agent.rag_agent.deployment[0].url}/api/v1/chat/completions"
+  description = "OpenAI-compatible chat endpoint of the agent (for local dev AGENT_ENDPOINT)."
+}
+
 output "knowledge_base_uuid" {
   value       = digitalocean_gradientai_knowledge_base.kb.id
   description = "UUID of the knowledge base. Upload documents via the DO console."
