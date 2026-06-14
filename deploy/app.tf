@@ -1,13 +1,14 @@
 # Chat UI deployed on App Platform.
 # Serves a simple web interface that calls the managed agent's chat API.
-# The app self-discovers the agent's deployment URL and API key at startup.
+# The agent endpoint and API key are passed in directly via env; the app does
+# no DO API discovery or key generation.
 resource "digitalocean_app" "chat_ui" {
   depends_on = [digitalocean_gradientai_agent.rag_agent]
 
-  # The DO_API_TOKEN env var is a SECRET that the provider cannot read back, so
+  # The AGENT_API_KEY env var is a SECRET that the provider cannot read back, so
   # the env set always shows as drift and every apply would redeploy the app.
   # Env values are set correctly at create time; freeze them afterward so routine
-  # applies stay clean (AGENT_UUID/AGENT_NAME do not legitimately change).
+  # applies stay clean (AGENT_ENDPOINT/AGENT_NAME do not legitimately change).
   lifecycle {
     ignore_changes = [spec[0].service[0].env]
   }
@@ -47,14 +48,14 @@ resource "digitalocean_app" "chat_ui" {
       dockerfile_path = "chat-ui/Dockerfile"
 
       env {
-        key   = "AGENT_UUID"
-        value = digitalocean_gradientai_agent.rag_agent.id
+        key   = "AGENT_ENDPOINT"
+        value = "${digitalocean_gradientai_agent.rag_agent.deployment[0].url}/api/v1/chat/completions"
         scope = "RUN_TIME"
       }
 
       env {
-        key   = "DO_API_TOKEN"
-        value = var.do_token
+        key   = "AGENT_API_KEY"
+        value = var.agent_api_key
         scope = "RUN_TIME"
         type  = "SECRET"
       }

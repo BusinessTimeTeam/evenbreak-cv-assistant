@@ -106,6 +106,12 @@ variable "_app_source_branch" {
   description = "Git branch for the app source code."
 }
 
+variable "agent_api_key" {
+  type        = string
+  sensitive   = true
+  description = "Secret API key the chat UI uses to call the managed agent. Mint one out-of-band (DO console > GenAI > Agents > API Keys, or the API) and supply via TF_VAR_agent_api_key. The provider has no resource to create agent API keys, so this is operator-supplied like do_token."
+}
+
 // =============================================================================
 // AGENT CONFIGURATION
 // =============================================================================

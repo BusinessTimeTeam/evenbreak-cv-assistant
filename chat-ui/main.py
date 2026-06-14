@@ -2,13 +2,14 @@
 messages to a DigitalOcean managed GenAI agent and serves a simple web
 interface.
 
-The app self-discovers the agent's deployment URL and API key at startup
-using the DO API.
+The agent endpoint and API key are supplied directly via the environment; the
+app never calls the DO API to discover the endpoint or mint a key.
 
-Environment variables (injected by terraform via App Platform):
-    AGENT_UUID   — UUID of the managed agent
-    DO_API_TOKEN — DigitalOcean API token
-    AGENT_NAME   — Display name of the agent (optional)
+Environment variables (injected by terraform via App Platform, or from .env
+locally):
+    AGENT_ENDPOINT — OpenAI-compatible chat endpoint of the agent (required)
+    AGENT_API_KEY  — Secret API key for the agent (required)
+    AGENT_NAME     — Display name of the agent (optional)
 """
 
 import logging
@@ -25,92 +26,38 @@ logger = logging.getLogger("chat-ui")
 
 app = FastAPI(title="RAG Assistant")
 
-# Discovery inputs (required only when overrides below are not provided).
-AGENT_UUID = os.environ.get("AGENT_UUID")
-DO_API_TOKEN = os.environ.get("DO_API_TOKEN")
-AGENT_NAME = os.environ.get("AGENT_NAME", "RAG Assistant")
-DO_API_BASE = os.environ.get("DO_API_BASE", "https://api.digitalocean.com")
-
-# Optional overrides for local development: when both are set, the app talks to
-# the remote agent directly and skips all DO API discovery (so no DO_API_TOKEN
-# or AGENT_UUID is needed locally, and no per-restart API key is minted).
+# The agent endpoint and key come straight from the environment. No discovery,
+# no key generation.
 AGENT_ENDPOINT = os.environ.get("AGENT_ENDPOINT")
 AGENT_API_KEY = os.environ.get("AGENT_API_KEY")
+AGENT_NAME = os.environ.get("AGENT_NAME", "RAG Assistant")
 
 # Serve the static HTML chat page.
 INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
 
 
-def _do_headers():
-    return {"Authorization": f"Bearer {DO_API_TOKEN}", "Content-Type": "application/json"}
+def _require_config(endpoint, api_key):
+    """Validate the required runtime configuration.
 
-
-def _resolve_config(endpoint, api_key, agent_uuid, do_token):
-    """Decide whether startup needs DO API discovery.
-
-    Returns False when both overrides (endpoint + api_key) are present, meaning
-    discovery is skipped. Returns True when discovery is needed and its inputs
-    are present. Raises RuntimeError naming the missing variables otherwise.
+    Raises RuntimeError naming any missing variables. The app needs both the
+    agent endpoint and its API key supplied via the environment.
     """
-    if endpoint and api_key:
-        return False
     missing = [
         name
-        for name, value in (("AGENT_UUID", agent_uuid), ("DO_API_TOKEN", do_token))
+        for name, value in (("AGENT_ENDPOINT", endpoint), ("AGENT_API_KEY", api_key))
         if not value
     ]
     if missing:
         raise RuntimeError(
-            "Incomplete configuration. For local dev set AGENT_ENDPOINT and "
-            "AGENT_API_KEY; otherwise set "
-            f"{', '.join(missing)} so the agent can be discovered."
+            f"Missing required environment variable(s): {', '.join(missing)}. "
+            "Set AGENT_ENDPOINT and AGENT_API_KEY."
         )
-    return True
-
-
-def _discover_agent():
-    """Fetch agent details from the DO API to get the deployment URL and API key."""
-    global AGENT_ENDPOINT, AGENT_API_KEY
-
-    logger.info("Discovering agent %s ...", AGENT_UUID)
-    with httpx.Client(timeout=30.0) as client:
-        # Get agent details.
-        resp = client.get(f"{DO_API_BASE}/v2/gen-ai/agents/{AGENT_UUID}", headers=_do_headers())
-        resp.raise_for_status()
-        agent = resp.json()["agent"]
-
-        # Extract deployment URL.
-        deployment = agent.get("deployment", {})
-        deploy_url = deployment.get("url")
-        if deploy_url:
-            AGENT_ENDPOINT = f"{deploy_url}/api/v1/chat/completions"
-            logger.info("Agent endpoint: %s", AGENT_ENDPOINT)
-        else:
-            logger.error("Agent has no deployment URL. Status: %s", deployment.get("status"))
-            raise RuntimeError("Agent deployment URL not available")
-
-        # Create an API key for agent authentication.
-        # The auto-generated api_keys[].api_key is a chatbot identifier, not a secret key.
-        # We need to create a real API key via the API.
-        logger.info("Creating agent API key...")
-        key_resp = client.post(
-            f"{DO_API_BASE}/v2/gen-ai/agents/{AGENT_UUID}/api_keys",
-            headers=_do_headers(),
-            json={"name": "chat-ui"},
-        )
-        key_resp.raise_for_status()
-        AGENT_API_KEY = key_resp.json()["api_key_info"]["secret_key"]
-        logger.info("Agent API key created")
 
 
 @app.on_event("startup")
 async def startup_event():
-    if _resolve_config(AGENT_ENDPOINT, AGENT_API_KEY, AGENT_UUID, DO_API_TOKEN):
-        _discover_agent()
-    else:
-        logger.info(
-            "Using AGENT_ENDPOINT/AGENT_API_KEY overrides; skipping DO API discovery"
-        )
+    _require_config(AGENT_ENDPOINT, AGENT_API_KEY)
+    logger.info("Chat UI ready; proxying to agent endpoint %s", AGENT_ENDPOINT)
 
 
 @app.get("/", response_class=HTMLResponse)

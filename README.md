@@ -168,6 +168,7 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 | Variable | Default | Description |
 |---|---|---|
 | `do_token` | *(required)* | DigitalOcean API token |
+| `agent_api_key` | *(required)* | Secret API key the chat UI uses to call the agent. Mint one out-of-band (no provider resource exists); supply via `TF_VAR_agent_api_key` (CI: the `AGENT_API_KEY` repo secret) |
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
 | `basename` | `rag-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
@@ -205,7 +206,7 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 - **Embeddings**: Qwen3 0.6B is used by default for document embedding.
 - **Guardrails**: Jailbreak detection, content moderation, and sensitive data protection are attached post-creation via the DO API (terraform provider limitation).
 - **KB indexing**: A `null_resource` provisioner waits up to 10 minutes for knowledge base indexing to complete before attaching it to the agent.
-- **Chat UI**: A Python FastAPI application deployed on App Platform. It discovers the agent endpoint and creates an API key at startup.
+- **Chat UI**: A Python FastAPI application deployed on App Platform. The agent endpoint and API key are injected as env vars (`AGENT_ENDPOINT` / `AGENT_API_KEY`); the app does no DO API discovery or key generation. Because the provider has no resource to mint an agent API key, the key is operator-supplied (`var.agent_api_key`).
 - **Resource naming**: All resources are suffixed with a random 4-character string to avoid naming collisions.
 
 ## Known issues
@@ -258,7 +259,7 @@ The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:
 
 - Serves a single-page web interface with a conversational chat layout.
 - Proxies messages to the managed agent's OpenAI-compatible chat completions endpoint.
-- Auto-discovers the agent's deployment URL and creates an API key on startup.
+- Reads the agent endpoint and API key from the environment (`AGENT_ENDPOINT` / `AGENT_API_KEY`) — it never calls the DO API to discover the endpoint or mint a key.
 - Maintains conversation history for multi-turn interactions.
 
 ### Local development with Docker
