@@ -4,7 +4,7 @@
 #   prod — the default/final stage App Platform builds (runs uvicorn)
 # `prod` is intentionally last so a plain `docker build` (and App Platform) produces
 # the production image without needing a --target flag.
-FROM python:3.12-slim AS base
+FROM python:3.14-slim AS base
 
 WORKDIR /app
 

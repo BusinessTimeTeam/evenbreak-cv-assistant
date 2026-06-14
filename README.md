@@ -280,23 +280,11 @@ cp .env.example .env
 `AGENT_ENDPOINT` is pre-filled with the current agent deployment URL. You only
 need to supply `AGENT_API_KEY`.
 
-**2. Mint an agent API key (one time).** Either:
+**2. Mint an agent API key (one time).**:
 
 - **Console:** [DO console](https://cloud.digitalocean.com/) → **GenAI Platform →
   Agents** → select the agent → **API Keys** → **Create Key** → copy the secret
   key.
-
-- **API (`curl`):** with your DO API token and the agent UUID
-  (`terraform output agent_uuid` from `deploy/`):
-
-  ```bash
-  curl -s -X POST \
-    -H "Authorization: Bearer $DO_API_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"name":"local-dev"}' \
-    "https://api.digitalocean.com/v2/gen-ai/agents/<AGENT_UUID>/api_keys" \
-    | python3 -c "import json,sys; print(json.load(sys.stdin)['api_key_info']['secret_key'])"
-  ```
 
 Paste the key into `.env` as `AGENT_API_KEY`. The key is reused across restarts —
 revoke it in the console when you no longer need it.

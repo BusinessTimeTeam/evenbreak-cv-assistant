@@ -8,7 +8,7 @@ resource "digitalocean_app" "chat_ui" {
   # The AGENT_API_KEY env var is a SECRET that the provider cannot read back, so
   # the env set always shows as drift and every apply would redeploy the app.
   # Env values are set correctly at create time; freeze them afterward so routine
-  # applies stay clean (AGENT_ENDPOINT/AGENT_NAME do not legitimately change).
+  # applies stay clean (AGENT_ENDPOINT do not legitimately change).
   lifecycle {
     ignore_changes = [spec[0].service[0].env]
   }
@@ -58,12 +58,6 @@ resource "digitalocean_app" "chat_ui" {
         value = var.agent_api_key
         scope = "RUN_TIME"
         type  = "SECRET"
-      }
-
-      env {
-        key   = "AGENT_NAME"
-        value = digitalocean_gradientai_agent.rag_agent.name
-        scope = "RUN_TIME"
       }
     }
   }
