@@ -461,6 +461,24 @@
             <div class="input-hint">
                 Press Enter to send, Shift+Enter for new line
             </div>
+            <!-- Minimal, unstyled CV upload form. Posts the file to /api/upload,
+                 which extracts its text and hands it to the agent. -->
+            <form id="uploadForm" style="max-width: 720px; margin: 8px auto 0">
+                <input
+                    type="file"
+                    id="cvFile"
+                    name="file"
+                    accept=".pdf,.docx"
+                    required
+                />
+                <input
+                    type="text"
+                    id="cvMessage"
+                    name="message"
+                    placeholder="Optional: what should the assistant do with this CV?"
+                />
+                <button type="submit">Upload CV</button>
+            </form>
         </div>
 
         <script>
@@ -469,6 +487,9 @@
             const textarea = document.getElementById("input");
             const sendBtn = document.getElementById("send");
             let history = [];
+            // Set after a CV upload; sent on every chat turn so the server can
+            // re-attach the stored CV. The CV text itself is never held here.
+            let sessionId = null;
 
             textarea.addEventListener("input", function () {
                 this.style.height = "auto";
@@ -510,6 +531,7 @@
                         body: JSON.stringify({
                             message,
                             history: history.slice(0, -1),
+                            session_id: sessionId,
                         }),
                     });
                     const data = await res.json();
@@ -532,6 +554,54 @@
                 sendBtn.disabled = false;
                 textarea.focus();
             }
+
+            const uploadForm = document.getElementById("uploadForm");
+            uploadForm.addEventListener("submit", async function (e) {
+                e.preventDefault();
+                const file = document.getElementById("cvFile").files[0];
+                const msg = document.getElementById("cvMessage").value.trim();
+                if (!file) return;
+
+                const empty = document.getElementById("empty");
+                if (empty) empty.remove();
+
+                appendMessage(
+                    "user",
+                    "📎 Uploaded CV: " + file.name + (msg ? "\n" + msg : ""),
+                );
+                const typingEl = appendTyping();
+
+                const formData = new FormData();
+                formData.append("file", file);
+                formData.append("message", msg);
+                if (sessionId) formData.append("session_id", sessionId);
+
+                try {
+                    const res = await fetch("/api/upload", {
+                        method: "POST",
+                        body: formData,
+                    });
+                    const data = await res.json();
+                    const content =
+                        data.content || data.error || "No response received.";
+                    const isError = !!data.error || res.status >= 400;
+
+                    // Remember the session so later chat turns keep the CV.
+                    if (data.session_id) sessionId = data.session_id;
+
+                    typingEl.remove();
+                    appendMessage("assistant", content, isError);
+                    history.push({ role: "assistant", content });
+                } catch (err) {
+                    typingEl.remove();
+                    appendMessage(
+                        "assistant",
+                        "Upload error: " + err.message,
+                        true,
+                    );
+                }
+                uploadForm.reset();
+            });
 
             function appendMessage(role, text, isError) {
                 const div = document.createElement("div");

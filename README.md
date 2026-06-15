@@ -3,103 +3,6 @@
 This project was forked from the DigitalOcean marketplace-blueprints repo in GitLab. It
 was originally licensed under the Apache 2 licence.
 
-## How to use DigitalOcean Blueprints
-
-### Install Terraform
-
-Head to the [Terraform install page](https://developer.hashicorp.com/terraform/downloads) 
-and follow the instructions for your platform. 
-
-You can validate your local Terraform installation by running:
-```shell
-$ terraform -v 
-Terraform v1.5.7
-...
-```
-
-### Create DigitalOcean API token
-Head to the [Applications & API](https://cloud.digitalocean.com/account/api/tokens) page 
-and create new personal access token (PAT) by clicking the _**Generate New Token**_ button. 
-Make sure to check **_Write_** scope for the token, as Terraform needs it to create new resources. 
-After creating the token, make sure to save it as it disappears forever if you close the page. 
-If you lost the token, delete it and create a new one.
-
-### Set up a blueprint
-
-Clone this repository to the machine where Terraform is installed:
-```shell
-$ git clone https://github.com/digitalocean/marketplace-blueprints.git
-```
-
-Head to the blueprint you are interested in, for this example we will use ELK:
-```shell
-$ cd marketplace-blueprints/blueprints/elk/
-```
-
-#### Define your variables
-
-Edit `variables.tf` file and specify your API token like this:
-```terraform
-variable "do_token" {
-  default = "dop_v1_your_beautiful_token_here"
-}
-```
-
-**(Optional but Recommended)** Use SSH keys to deploy your Droplets instead of passwords. You can retrieve your list of SSH Key IDs using [doctl](https://docs.digitalocean.com/reference/doctl/how-to/install/).
-
-Retrieve your SSH Key IDs:
-
-```shell
-doctl compute ssh-key list
-```
-
-Specify which SSH keys to use:
-```terraform
-variable "ssh_key_ids" {
-  default = [123, 456, 789] # Replace these numbers with actual SSH key IDs
-  type = list(number)
-}
-```
-
-**(Optional but Recommended)** Specify the [region](https://docs.digitalocean.com/products/platform/availability-matrix/#available-datacenters) you want your Droplets to deploy:
-
-```terraform
-variable "region" {
-  default = "nyc3"
-}
-```
-
-We are almost there, now initialize the Terraform project by running:
-```shell
-$ terraform init
-```
-
-Finally, after project is initialized, run the Terraform apply to spin the blueprint:
-```shell
-$ terraform apply
-```
-
-It can take few minutes to spin the droplets
-and some blueprints require extra time after the creation to finish the configuration.
-
-# Marketplace Blueprints
-
-
-
-This repository contains blueprints for Solution Stacks applications listed in our Marketplace.
-
-Blueprint is the Terraform-based configuration and source code DigitalOcean uses to create Solution Stacks applications.
-
-- Docs
-- Blueprint [template](./template)
-- Blueprint [generator](./scripts/generate-blueprint.sh)
-- Blueprint [examples](./examples)
-
-## How to create and publish your application
-Check out our [contributing](./docs/CONTRIBUTING.md) guide to learn how to create and publish your blueprint!
-
-# Welcome to the DigitalOcean RAG Assistant Terraform Stack!
-
 This stack deploys a fully functional Retrieval-Augmented Generation (RAG) assistant on DigitalOcean, including:
 
 - A **managed GenAI agent** with serverless inference for question answering.
@@ -261,6 +164,23 @@ The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:
 - Proxies messages to the managed agent's OpenAI-compatible chat completions endpoint.
 - Reads the agent endpoint and API key from the environment (`AGENT_ENDPOINT` / `AGENT_API_KEY`) — it never calls the DO API to discover the endpoint or mint a key.
 - Maintains conversation history for multi-turn interactions.
+- Accepts CV uploads (PDF / `.docx`) via `POST /api/upload`. Because the managed
+  agent only accepts text (and is stateless — it keeps no session of its own),
+  the app extracts the document's text server-side (`extraction.py`, using
+  `pypdf` / `python-docx`), stores it keyed by a **session id**, and returns that
+  id to the browser. On every `/api/chat` turn the browser sends the session id
+  back and the server re-injects the CV as a stable leading message, so the agent
+  can reason about it across the whole conversation. The CV is carried as a
+  `user` message, **not** a `system` message: the managed agent rejects
+  client-supplied system/developer messages (`HTTP 400 — "agent instructions are
+  set via agent configuration"`). The browser only holds the
+  session id and the Q&A turns — never the full CV text. The session store is an
+  in-process dict (`_cv_sessions`), fine for the current single instance but lost
+  on restart; move it to a shared store (Redis/Spaces) if the app scales out.
+  Prompt caching is intentionally not used: it only applies to Anthropic/OpenAI
+  models, and this stack defaults to `nvidia-nemotron-3-super-120b`. The stable
+  leading-message structure is cache-ready if the model is later switched. The
+  bare upload form in `static/index.html` is a placeholder for a proper frontend.
 
 ### Local development with Docker
 
@@ -311,3 +231,14 @@ Open <http://localhost:8080>.
 - The agent API key is injected as a `SECRET` environment variable in App Platform.
 - Guardrails provide defense-in-depth against prompt injection, toxic content, and PII leakage.
 - The chat UI does not store conversation history server-side; all history is held in the browser session.
+
+## Future work
+
+For this first MVP we've reduced the scope in some areas. This is a list of the things
+that we think we could come back to at a later date:
+
+- Use Function Calling on the agent to fetch uploaded file contents, instead of having
+  the file's contents extracted by our server. This would mean that the user would
+  upload the file to DO Spaces, and we'd write an agent skill to fetch file contents.
+- Upgrade the model to one of the Anthropic/OpenAI models in order to use their context
+  cache features. This should speed up conversations.
