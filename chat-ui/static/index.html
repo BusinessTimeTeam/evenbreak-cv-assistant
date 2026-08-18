@@ -4,488 +4,175 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>RAG Assistant</title>
-        <style>
-            :root {
-                --do-blue: #0069ff;
-                --do-blue-hover: #0055d4;
-                --do-blue-light: #e8f0ff;
-                --do-dark: #0d2137;
-                --do-gray-50: #f8f9fb;
-                --do-gray-100: #f0f2f5;
-                --do-gray-200: #e1e5ea;
-                --do-gray-300: #c8cfd7;
-                --do-gray-500: #8892a2;
-                --do-gray-700: #4a5568;
-                --do-gray-900: #1a202c;
-                --do-white: #ffffff;
-                --do-green: #15cd72;
-                --do-radius: 8px;
-                --do-radius-lg: 12px;
-                --do-shadow:
-                    0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
-            }
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }
-            body {
-                font-family:
-                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                    "Helvetica Neue", Arial, sans-serif;
-                background: var(--do-gray-50);
-                height: 100vh;
-                display: flex;
-                flex-direction: column;
-                color: var(--do-gray-900);
-            }
-            header {
-                background: var(--do-dark);
-                padding: 0 24px;
-                height: 56px;
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                flex-shrink: 0;
-            }
-            .header-logo {
-                width: 28px;
-                height: 28px;
-                background: var(--do-blue);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .header-logo svg {
-                width: 18px;
-                height: 18px;
-                fill: white;
-            }
-            .header-title {
-                color: white;
-                font-size: 15px;
-                font-weight: 600;
-            }
-            .header-badge {
-                background: rgba(255, 255, 255, 0.12);
-                color: rgba(255, 255, 255, 0.7);
-                font-size: 11px;
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-weight: 500;
-            }
-            .chat-container {
-                flex: 1;
-                overflow-y: auto;
-                padding: 24px 16px;
-            }
-            .chat-inner {
-                max-width: 720px;
-                margin: 0 auto;
-            }
-
-            /* Empty state */
-            .empty-state {
-                text-align: center;
-                padding-top: 10vh;
-            }
-            .empty-icon {
-                width: 64px;
-                height: 64px;
-                background: linear-gradient(135deg, var(--do-blue), #0055d4);
-                border-radius: 18px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                margin-bottom: 20px;
-                box-shadow: 0 4px 16px rgba(0, 105, 255, 0.25);
-            }
-            .empty-icon svg {
-                width: 32px;
-                height: 32px;
-                fill: white;
-            }
-            .empty-state h2 {
-                font-size: 22px;
-                font-weight: 700;
-                margin-bottom: 8px;
-            }
-            .empty-state p {
-                color: var(--do-gray-500);
-                font-size: 14px;
-                line-height: 1.6;
-                max-width: 480px;
-                margin: 0 auto 24px;
-            }
-
-            /* Getting started steps */
-            .steps {
-                display: flex;
-                gap: 12px;
-                justify-content: center;
-                margin-bottom: 28px;
-                flex-wrap: wrap;
-            }
-            .step {
-                background: var(--do-white);
-                border: 1px solid var(--do-gray-200);
-                border-radius: var(--do-radius-lg);
-                padding: 14px 18px;
-                text-align: left;
-                width: 200px;
-                box-shadow: var(--do-shadow);
-            }
-            .step-num {
-                width: 22px;
-                height: 22px;
-                background: var(--do-blue-light);
-                color: var(--do-blue);
-                border-radius: 50%;
-                font-size: 11px;
-                font-weight: 700;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                margin-bottom: 8px;
-            }
-            .step h4 {
-                font-size: 13px;
-                font-weight: 600;
-                margin-bottom: 4px;
-            }
-            .step p {
-                font-size: 12px;
-                color: var(--do-gray-500);
-                line-height: 1.4;
-            }
-
-            /* Suggested prompts */
-            .prompts-label {
-                font-size: 12px;
-                font-weight: 600;
-                color: var(--do-gray-500);
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 10px;
-            }
-            .prompts {
-                display: flex;
-                gap: 8px;
-                justify-content: center;
-                flex-wrap: wrap;
-                max-width: 600px;
-                margin: 0 auto;
-            }
-            .prompt-btn {
-                background: var(--do-white);
-                border: 1px solid var(--do-gray-200);
-                border-radius: 20px;
-                padding: 8px 16px;
-                font-size: 13px;
-                color: var(--do-gray-700);
-                cursor: pointer;
-                transition: all 0.15s;
-                font-family: inherit;
-            }
-            .prompt-btn:hover {
-                border-color: var(--do-blue);
-                color: var(--do-blue);
-                background: var(--do-blue-light);
-            }
-
-            /* Messages */
-            .message {
-                margin-bottom: 20px;
-                display: flex;
-                gap: 12px;
-                animation: fadeIn 0.2s ease;
-            }
-            @keyframes fadeIn {
-                from {
-                    opacity: 0;
-                    transform: translateY(4px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-            .message.user {
-                flex-direction: row-reverse;
-            }
-            .avatar {
-                width: 32px;
-                height: 32px;
-                border-radius: 8px;
-                flex-shrink: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            .message.assistant .avatar {
-                background: var(--do-blue);
-                color: white;
-            }
-            .message.user .avatar {
-                background: var(--do-gray-200);
-                color: var(--do-gray-700);
-            }
-            .bubble {
-                max-width: 80%;
-                padding: 10px 14px;
-                border-radius: var(--do-radius-lg);
-                line-height: 1.6;
-                font-size: 14px;
-                white-space: pre-wrap;
-                word-wrap: break-word;
-            }
-            .message.user .bubble {
-                background: var(--do-blue);
-                color: white;
-                border-bottom-right-radius: 4px;
-            }
-            .message.assistant .bubble {
-                background: var(--do-white);
-                color: var(--do-gray-900);
-                border: 1px solid var(--do-gray-200);
-                border-bottom-left-radius: 4px;
-                box-shadow: var(--do-shadow);
-            }
-            .typing-dots {
-                display: inline-flex;
-                gap: 4px;
-                padding: 4px 0;
-            }
-            .typing-dots span {
-                width: 6px;
-                height: 6px;
-                background: var(--do-gray-300);
-                border-radius: 50%;
-                animation: typingBounce 1.2s ease infinite;
-            }
-            .typing-dots span:nth-child(2) {
-                animation-delay: 0.2s;
-            }
-            .typing-dots span:nth-child(3) {
-                animation-delay: 0.4s;
-            }
-            @keyframes typingBounce {
-                0%,
-                60%,
-                100% {
-                    transform: translateY(0);
-                }
-                30% {
-                    transform: translateY(-4px);
-                }
-            }
-            .error-bubble {
-                background: #fef2f2 !important;
-                border-color: #fecaca !important;
-                color: #991b1b !important;
-            }
-
-            /* Input area */
-            .input-area {
-                background: var(--do-white);
-                border-top: 1px solid var(--do-gray-200);
-                padding: 16px;
-                flex-shrink: 0;
-            }
-            .input-inner {
-                max-width: 720px;
-                margin: 0 auto;
-                display: flex;
-                gap: 8px;
-                align-items: center;
-            }
-            .input-wrapper {
-                flex: 1;
-            }
-            textarea {
-                width: 100%;
-                padding: 10px 14px;
-                border: 1px solid var(--do-gray-200);
-                border-radius: var(--do-radius);
-                font-size: 14px;
-                font-family: inherit;
-                line-height: 1.5;
-                resize: none;
-                outline: none;
-                transition: border-color 0.15s;
-                height: 42px;
-                min-height: 42px;
-                max-height: 120px;
-            }
-            textarea:focus {
-                border-color: var(--do-blue);
-                box-shadow: 0 0 0 3px rgba(0, 105, 255, 0.1);
-            }
-            textarea::placeholder {
-                color: var(--do-gray-300);
-            }
-            .send-btn {
-                width: 42px;
-                height: 42px;
-                background: var(--do-blue);
-                color: white;
-                border: none;
-                border-radius: var(--do-radius);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                transition: background 0.15s;
-                flex-shrink: 0;
-            }
-            .send-btn:hover {
-                background: var(--do-blue-hover);
-            }
-            .send-btn:disabled {
-                background: var(--do-gray-200);
-                cursor: not-allowed;
-            }
-            .send-btn svg {
-                width: 18px;
-                height: 18px;
-                fill: currentColor;
-            }
-            .input-hint {
-                font-size: 11px;
-                color: var(--do-gray-300);
-                margin-top: 6px;
-                text-align: center;
-            }
-        </style>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Ubuntu:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="/static/styles.css" />
     </head>
     <body>
         <header>
             <div class="header-logo">
-                <svg viewBox="0 0 24 24">
-                    <path
-                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
-                    />
+                <svg xmlns="http://www.w3.org/2000/svg" width="312" height="81" viewBox="0 0 312 81" fill="none">
+                    <g fill="#0098AF">
+                        <path d="M64.8242 59.9561V21.7302H87.2403V28.0341H72.1704V36.6154H85.2667V42.9193H72.1704V53.6648H88.556V59.9687H64.8242V59.9561Z"/>
+                        <path d="M101.056 59.9558C99.2648 56.2943 97.4374 52.0037 95.5856 47.0839C93.7338 42.1641 91.9674 36.7787 90.2983 30.9404H98.01C98.3633 32.5007 98.7897 34.1742 99.3013 35.9483C99.8008 37.7224 100.325 39.4966 100.885 41.2959C101.445 43.0826 102.006 44.8316 102.591 46.5177C103.163 48.2037 103.711 49.7514 104.235 51.148C104.759 49.7514 105.332 48.2037 105.965 46.5177C106.599 44.8316 107.232 43.0952 107.854 41.2959C108.475 39.5092 109.072 37.7224 109.644 35.9609C110.217 34.1867 110.692 32.5258 111.045 30.953H118.513C116.844 36.8039 114.993 42.1767 112.958 47.0965C110.924 52.0162 109.011 56.3069 107.22 59.9684H101.056V59.9558Z"/>
+                        <path d="M150.018 32.224C151.333 31.8466 152.954 31.5068 154.891 31.1797C156.828 30.8525 158.923 30.689 161.201 30.689C163.479 30.689 165.282 31.0035 166.757 31.6452C168.231 32.287 169.4 33.1929 170.253 34.3631C171.106 35.5333 171.715 36.9425 172.08 38.5657C172.434 40.1888 172.616 41.9881 172.616 43.9636V60.3335H165.258V44.9576C165.258 42.2398 164.966 40.2895 164.357 39.0941C163.76 37.8988 162.541 37.3074 160.714 37.3074C160.154 37.3074 159.605 37.3326 159.069 37.3703C158.533 37.4081 157.961 37.471 157.364 37.5591V60.3461H150.005V32.2492L150.018 32.224Z"/>
+                        <path d="M202.744 45.4356C202.744 47.7382 202.452 49.8269 201.842 51.7017C201.245 53.5765 200.368 55.1745 199.211 56.4831C198.054 57.8042 196.64 58.8234 194.971 59.5406C193.302 60.2578 191.39 60.6227 189.233 60.6227C187.321 60.6227 185.371 60.4717 183.373 60.1949C181.376 59.9055 179.707 59.5406 178.354 59.0877V18.3956L185.713 17.0996V31.6073C186.748 31.1166 187.747 30.7769 188.697 30.5881C189.66 30.3994 190.61 30.3113 191.56 30.3113C193.4 30.3113 195.008 30.6762 196.409 31.3934C197.81 32.1106 198.967 33.1424 199.905 34.4761C200.843 35.8099 201.55 37.4079 202.025 39.2575C202.5 41.1072 202.744 43.1707 202.744 45.4356ZM195.276 45.2468C195.276 42.529 194.85 40.4529 193.997 39.0059C193.144 37.5589 191.84 36.8417 190.086 36.8417C189.294 36.8417 188.502 36.9549 187.723 37.1814C186.943 37.4079 186.273 37.6847 185.725 38.0118V53.7526C186.285 53.8785 186.87 53.954 187.491 54.0043C188.113 54.042 188.636 54.0672 189.075 54.0672C190.988 54.0672 192.498 53.4003 193.619 52.054C194.728 50.7202 195.288 48.4428 195.288 45.2342L195.276 45.2468Z"/>
+                        <path d="M266.837 30.1857C269.152 30.1857 271.076 30.4625 272.611 31.0161C274.147 31.5698 275.365 32.3499 276.291 33.3565C277.204 34.3631 277.862 35.5962 278.264 37.0558C278.666 38.5153 278.861 40.1511 278.861 41.963V59.2514C277.789 59.5031 276.193 59.7925 274.073 60.1196C271.954 60.4468 269.59 60.6103 266.959 60.6103C265.168 60.6103 263.535 60.4468 262.086 60.1196C260.624 59.7925 259.381 59.2514 258.346 58.4839C257.31 57.7289 256.506 56.7349 255.958 55.527C255.41 54.3191 255.117 52.8217 255.117 51.0476C255.117 49.2734 255.434 47.9397 256.08 46.7821C256.713 45.6245 257.578 44.706 258.65 44.0013C259.722 43.2967 260.965 42.7934 262.354 42.4914C263.755 42.1895 265.204 42.0259 266.715 42.0259C268.628 42.0259 270.321 42.1895 271.795 42.5166V41.5855C271.795 40.1385 271.357 38.9431 270.48 37.9743C269.602 37.0054 268.092 36.5273 265.935 36.5273C264.534 36.5273 263.194 36.628 261.903 36.8419C260.612 37.0432 259.564 37.2948 258.76 37.5842L257.749 31.4691C258.662 31.142 259.966 30.84 261.635 30.5757C263.304 30.3115 265.046 30.1731 266.837 30.1731V30.1857ZM267.495 54.5078C268.287 54.5078 269.066 54.5078 269.822 54.4826C270.577 54.4575 271.235 54.4071 271.795 54.3316V47.6629C271.32 47.5874 270.735 47.5119 270.065 47.449C269.383 47.3861 268.774 47.3609 268.214 47.3609C267.458 47.3609 266.715 47.4112 265.996 47.5119C265.278 47.6125 264.656 47.7887 264.108 48.0403C263.56 48.292 263.146 48.6317 262.829 49.0847C262.512 49.5377 262.354 50.1291 262.354 50.8714C262.354 52.1926 262.829 53.1237 263.791 53.6773C264.754 54.231 265.984 54.5078 267.495 54.5078Z"/>
+                        <path d="M292.079 42.4157C292.798 41.5475 293.517 40.629 294.26 39.6727C294.991 38.7039 295.71 37.7099 296.416 36.6781C297.111 35.6463 297.781 34.6523 298.414 33.6834C299.048 32.7146 299.608 31.7961 300.083 30.9404H308.928C308.209 31.8841 307.393 32.9159 306.479 34.0232C305.566 35.1304 304.615 36.2629 303.641 37.4205C302.666 38.5781 301.692 39.6853 300.717 40.7548C299.742 41.8244 298.853 42.8184 298.061 43.7118C299.06 44.6932 300.132 45.8885 301.289 47.26C302.447 48.6441 303.58 50.066 304.701 51.5507C305.809 53.0354 306.845 54.5076 307.783 55.9923C308.721 57.4771 309.464 58.7857 310.024 59.9433H301.594C301.119 58.9115 300.485 57.7539 299.706 56.4579C298.926 55.1619 298.098 53.8911 297.22 52.6328C296.343 51.3745 295.454 50.1792 294.565 49.0468C293.663 47.9143 292.835 46.9832 292.079 46.2408V59.9433H284.66V18.3956L292.079 17.0996V42.4157Z"/>
+                        <path d="M222.821 38.704C222.126 38.5278 221.298 38.3391 220.36 38.1378C219.422 37.9365 218.398 37.8358 217.314 37.8358C216.827 37.8358 216.242 37.8861 215.56 37.9742C214.878 38.0623 214.366 38.1629 214.013 38.2762V60.044H206.204V33.067C207.605 32.5637 209.249 32.0856 211.162 31.6326C213.062 31.1796 215.194 30.9531 217.533 30.9531C217.948 30.9531 218.459 30.9783 219.056 31.0286C219.653 31.079 220.25 31.1544 220.835 31.2425C221.432 31.3306 222.029 31.4438 222.614 31.5697C223.211 31.6955 223.71 31.8465 224.136 32.0352L222.821 38.704Z"/>
+                        <path d="M225.855 45.6874C225.855 43.1583 226.232 40.9438 226.988 39.0564C227.743 37.169 228.73 35.5836 229.948 34.3128C231.166 33.0545 232.58 32.0983 234.163 31.444C235.759 30.7897 237.392 30.4751 239.061 30.4751C242.971 30.4751 246.066 31.7082 248.344 34.187C250.622 36.6657 251.755 40.3021 251.755 45.096C251.755 45.5616 251.743 46.0775 251.706 46.6437C251.67 47.2099 251.633 47.7006 251.597 48.1284H233.871C234.041 49.7893 234.797 51.1105 236.125 52.0794C237.453 53.0608 239.231 53.539 241.473 53.539C242.91 53.539 244.311 53.4005 245.688 53.1363C247.065 52.8595 248.198 52.5323 249.075 52.1297L250.123 58.6852C249.708 58.8991 249.148 59.113 248.441 59.3395C247.747 59.5534 246.967 59.7422 246.114 59.9057C245.262 60.0693 244.336 60.2077 243.361 60.3084C242.387 60.4216 241.4 60.472 240.425 60.472C237.94 60.472 235.784 60.0945 233.944 59.3395C232.104 58.5846 230.582 57.5402 229.388 56.2316C228.182 54.9105 227.292 53.3502 226.708 51.5509C226.135 49.7516 225.843 47.8013 225.843 45.7L225.855 45.6874ZM244.214 42.6047C244.177 41.9252 244.068 41.2458 243.873 40.6041C243.678 39.9498 243.386 39.3836 242.984 38.8677C242.582 38.3644 242.07 37.9491 241.461 37.622C240.852 37.2949 240.084 37.1313 239.183 37.1313C238.281 37.1313 237.562 37.2823 236.929 37.5968C236.295 37.8988 235.771 38.314 235.357 38.8173C234.943 39.3206 234.614 39.912 234.383 40.5789C234.151 41.2458 233.993 41.9252 233.883 42.6047H244.214Z"/>
+                        <path d="M119.804 45.6874C119.804 43.1583 120.182 40.9438 120.937 39.0564C121.692 37.1564 122.679 35.5836 123.898 34.3128C125.116 33.0545 126.529 32.0983 128.113 31.444C129.709 30.7897 131.341 30.4751 133.022 30.4751C136.933 30.4751 140.027 31.7082 142.306 34.187C144.572 36.6657 145.717 40.3021 145.717 45.096C145.717 45.5616 145.705 46.0775 145.668 46.6437C145.631 47.2099 145.595 47.7006 145.558 48.1284H127.833C128.003 49.7893 128.758 51.1105 130.086 52.0794C131.414 53.0608 133.193 53.539 135.435 53.539C136.872 53.539 138.273 53.4005 139.65 53.1363C141.026 52.8595 142.159 52.5323 143.037 52.1297L144.084 58.6852C143.67 58.8991 143.11 59.113 142.403 59.3395C141.709 59.5534 140.929 59.7422 140.064 59.9057C139.211 60.0693 138.285 60.2077 137.311 60.3084C136.336 60.4216 135.349 60.472 134.375 60.472C131.889 60.472 129.733 60.0945 127.893 59.3395C126.054 58.5846 124.543 57.5402 123.325 56.2316C122.119 54.9105 121.23 53.3502 120.657 51.5509C120.084 49.7516 119.792 47.8013 119.792 45.7L119.804 45.6874ZM138.163 42.6047C138.127 41.9252 138.017 41.2458 137.822 40.6041C137.627 39.9498 137.335 39.3836 136.933 38.8677C136.531 38.3644 136.019 37.9491 135.41 37.622C134.801 37.2949 134.034 37.1313 133.132 37.1313C132.23 37.1313 131.512 37.2823 130.878 37.5968C130.245 37.8988 129.721 38.314 129.307 38.8173C128.892 39.3206 128.564 39.912 128.332 40.5789C128.101 41.2458 127.942 41.9252 127.833 42.6047H138.163Z"/>
+                    </g>
+                    <path d="M26.8387 40.0127H31.6996L23.1839 19.6289H18.323L26.8387 40.0127Z" fill="#FFEB00"/>
+                    <path d="M26.8625 40.0127H26.8381L18.2981 59.9561H23.159L31.699 40.0127H26.8625Z" fill="#E5007C"/>
+                    <path d="M18.3224 19.6289H.206787L8.14988 40.0127H26.8381L18.3224 19.6289Z" fill="url(#top-inner)"/>
+                    <path d="M13.0114 40.0127H8.15047L.0124512 59.9561H18.2986L26.8387 40.0127H13.0114Z" fill="url(#bottom-inner)"/>
+                    <path d="M.0119385 59.9561L7.55301 78.465C7.93067 79.3961 8.82 80.0127 9.79462 80.0127H43.4797C44.4421 80.0127 45.3071 79.4339 45.7091 78.5279L52.1172 63.7812C52.8969 61.9818 51.6299 59.9561 49.7172 59.9561H-.000244141Z" fill="url(#bottom)"/>
+                    <path d="M.206787 19.6288H49.7293C51.642 19.6288 52.8968 17.5779 52.1049 15.7911L45.7334 1.47216C45.3314.578798 44.4664 0 43.5161 0H9.81891C8.83211 0 7.95496.603963 7.56511 1.53507L.206787 19.6288Z" fill="url(#top)"/>
+                    <defs>
+                        <linearGradient id="top-inner" x1="13.5224" y1="19.9183" x2="13.5224" y2="31.3181" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#00575F"/>
+                        <stop offset="1" stop-color="#0098AF"/>
+                        </linearGradient>
+                        <linearGradient id="bottom-inner" x1="13.4256" y1="59.9561" x2="13.4256" y2="49.0721" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#00575F"/>
+                        <stop offset="1" stop-color="#007C8D"/>
+                        </linearGradient>
+                        <linearGradient id="bottom" x1=".0119385" y1="69.9718" x2="52.3486" y2="69.9718" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#0098AF"/>
+                        <stop offset=".37" stop-color="#0095AC"/>
+                        <stop offset=".68" stop-color="#008DA1"/>
+                        <stop offset=".96" stop-color="#007E90"/>
+                        <stop offset="1" stop-color="#007C8D"/>
+                        </linearGradient>
+                        <linearGradient id="top" x1=".206787" y1="9.81441" x2="52.3486" y2="9.81441" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#0098AF"/>
+                        <stop offset=".38" stop-color="#0095AC"/>
+                        <stop offset=".68" stop-color="#008DA2"/>
+                        <stop offset=".94" stop-color="#008092"/>
+                        <stop offset="1" stop-color="#007C8D"/>
+                        </linearGradient>
+                    </defs>
                 </svg>
             </div>
             <span class="header-title">RAG Assistant</span>
             <span class="header-badge">Powered by DigitalOcean GenAI</span>
         </header>
 
-        <div class="chat-container" id="chat">
-            <div class="chat-inner" id="chatInner">
-                <div class="empty-state" id="empty">
-                    <div class="empty-icon">
-                        <svg viewBox="0 0 24 24">
-                            <path
-                                d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"
-                            />
-                        </svg>
-                    </div>
-                    <h2>Welcome to your RAG Assistant</h2>
-                    <p>
-                        This assistant answers questions using your knowledge
-                        base documents. Upload your docs to get started, then
-                        ask anything.
-                    </p>
-
-                    <div class="steps">
-                        <div class="step">
-                            <div class="step-num">1</div>
-                            <h4>Upload Documents</h4>
-                            <p>
-                                Go to the DigitalOcean console and add files to
-                                your Knowledge Base.
-                            </p>
-                        </div>
-                        <div class="step">
-                            <div class="step-num">2</div>
-                            <h4>Ask Questions</h4>
-                            <p>
-                                Type a question below and the assistant will
-                                search your docs for answers.
-                            </p>
-                        </div>
-                        <div class="step">
-                            <div class="step-num">3</div>
-                            <h4>Get Answers</h4>
-                            <p>
-                                Responses are grounded in your documents with
-                                citations when available.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="prompts-label">Try asking</div>
-                    <div class="prompts">
-                        <button class="prompt-btn" onclick="usePrompt(this)">
-                            What topics are covered in my documents?
-                        </button>
-                        <button class="prompt-btn" onclick="usePrompt(this)">
-                            Summarize the key points from my knowledge base
-                        </button>
-                        <button class="prompt-btn" onclick="usePrompt(this)">
-                            What is the most important thing to know?
-                        </button>
-                        <button class="prompt-btn" onclick="usePrompt(this)">
-                            Help me find information about...
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="input-area">
-            <div class="input-inner">
-                <div class="input-wrapper">
-                    <textarea
-                        id="input"
-                        rows="1"
-                        placeholder="Ask a question about your documents..."
-                        autofocus
-                    ></textarea>
-                </div>
+        <main class="app-main">
+            <div class="chat-container" id="chat">
+                <div class="chat-inner" id="chatInner">
                 <button
-                    class="send-btn"
-                    id="send"
-                    onclick="sendMessage()"
-                    title="Send message"
+                    class="back-btn"
+                    id="backBtn"
+                    type="button"
+                    onclick="backToStart()"
+                    hidden
                 >
-                    <svg viewBox="0 0 24 24">
-                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    <svg aria-hidden="true" viewBox="0 0 20 20">
+                        <path d="m12.5 4-6 6 6 6" />
                     </svg>
+                    Back
                 </button>
-            </div>
-            <div class="input-hint">
-                Press Enter to send, Shift+Enter for new line
-            </div>
-            <!-- Minimal, unstyled CV upload form. Posts the file to /api/upload,
-                 which extracts its text and hands it to the agent. -->
-            <form id="uploadForm" style="max-width: 720px; margin: 8px auto 0">
-                <input
-                    type="file"
-                    id="cvFile"
-                    name="file"
-                    accept=".pdf,.docx"
-                    required
-                />
-                <input
-                    type="text"
-                    id="cvMessage"
-                    name="message"
-                    placeholder="Optional: what should the assistant do with this CV?"
-                />
-                <button type="submit">Upload CV</button>
-            </form>
-        </div>
+                <div class="landing" id="landing">
+                    <div class="landing-intro">
+                        <h1>How can we help?</h1>
+                        <p>
+                            Upload your CV for tailored support, or ask a
+                            general question using Evenbreak's resources.
+                        </p>
+                    </div>
 
+                    <div class="route-cards">
+                        <section class="route-card" aria-labelledby="upload-title">
+                            <div class="route-icon" aria-hidden="true">CV</div>
+                            <h2 id="upload-title">Upload your CV</h2>
+                            <p>
+                                Get help understanding your experience, skills,
+                                and opportunities to improve your CV.
+                            </p>
+                            <form id="uploadForm" class="upload-form">
+                                <label class="file-picker" for="cvFile">
+                                    <span id="fileLabel">Choose a PDF or Word file</span>
+                                    <input
+                                        type="file"
+                                        id="cvFile"
+                                        name="file"
+                                        accept=".pdf,.docx"
+                                        required
+                                    />
+                                </label>
+                                <button class="primary-btn" id="uploadBtn" type="submit">
+                                    Upload CV
+                                </button>
+                                <p class="form-status" id="uploadStatus" role="status"></p>
+                            </form>
+                        </section>
+
+                        <section class="route-card" aria-labelledby="qa-title">
+                            <div class="route-icon" aria-hidden="true">?</div>
+                            <h2 id="qa-title">Questions &amp; answers</h2>
+                            <p>
+                                Ask general questions about inclusive careers,
+                                work, and the resources in our knowledge base.
+                            </p>
+                            <button class="primary-btn" type="button" onclick="startGeneralQA()">
+                                Ask a question
+                            </button>
+                        </section>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <form
+                class="input-area"
+                id="composer"
+                aria-label="Message composer"
+                hidden
+            >
+                <div class="input-inner">
+                    <div class="input-wrapper">
+                        <textarea
+                            id="input"
+                            rows="1"
+                            placeholder="Ask a question..."
+                        ></textarea>
+                    </div>
+                    <button
+                        class="send-btn"
+                        id="send"
+                        type="submit"
+                        title="Send message"
+                    >
+                        <svg viewBox="0 0 24 24">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="input-hint">
+                    Press Enter to send, Shift+Enter for new line
+                </div>
+            </form>
+        </main>
+
+        <footer class="site-footer">
+            <p>&copy; Evenbreak. All rights reserved.</p>
+        </footer>
+
+        <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
         <script>
             const chatInner = document.getElementById("chatInner");
             const chatContainer = document.getElementById("chat");
             const textarea = document.getElementById("input");
             const sendBtn = document.getElementById("send");
+            const composer = document.getElementById("composer");
+            const backBtn = document.getElementById("backBtn");
             let history = [];
             // Set after a CV upload; sent on every chat turn so the server can
             // re-attach the stored CV. The CV text itself is never held here.
@@ -493,7 +180,7 @@
 
             textarea.addEventListener("input", function () {
                 this.style.height = "auto";
-                this.style.height = Math.min(this.scrollHeight, 120) + "px";
+                this.style.height = Math.min(this.scrollHeight, 144) + "px";
             });
             textarea.addEventListener("keydown", function (e) {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -501,11 +188,107 @@
                     sendMessage();
                 }
             });
+            composer.addEventListener("submit", function (e) {
+                e.preventDefault();
+                sendMessage();
+            });
 
             function usePrompt(btn) {
-                textarea.value = btn.textContent;
+                textarea.value = btn.dataset.prompt || btn.textContent.trim();
                 textarea.focus();
                 sendMessage();
+            }
+
+            function startConversation() {
+                const landing = document.getElementById("landing");
+                landing.hidden = true;
+                chatInner.classList.add("is-conversation");
+                backBtn.hidden = false;
+                composer.hidden = false;
+            }
+
+            function backToStart() {
+                chatInner
+                    .querySelectorAll(".message, .cv-ready")
+                    .forEach((element) => element.remove());
+                history = [];
+                sessionId = null;
+                textarea.value = "";
+                textarea.style.height = "auto";
+                textarea.placeholder = "Ask a question...";
+                composer.hidden = true;
+                backBtn.hidden = true;
+                chatInner.classList.remove("is-conversation");
+
+                uploadForm.reset();
+                fileLabel.textContent = "Choose a PDF or Word file";
+                uploadStatus.textContent = "";
+                uploadStatus.classList.remove("is-error");
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = "Upload CV";
+
+                document.getElementById("landing").hidden = false;
+                chatContainer.scrollTop = 0;
+            }
+
+            function startGeneralQA() {
+                sessionId = null;
+                history = [];
+                startConversation();
+                textarea.placeholder = "Ask a question about Evenbreak's resources...";
+                showGeneralReady();
+                textarea.focus();
+            }
+
+            function showGeneralReady() {
+                const ready = document.createElement("section");
+                ready.className = "cv-ready";
+                ready.innerHTML = `
+                    <div class="ready-mark" aria-hidden="true">?</div>
+                    <div>
+                        <p class="ready-label">General Q&amp;A</p>
+                        <h1>What would you like to know?</h1>
+                        <p>Ask about inclusive careers, finding work, workplace support, or anything covered by Evenbreak's resources.</p>
+                    </div>
+                    <div class="cv-actions">
+                        <button class="prompt-btn" data-prompt="What support is available for disabled candidates?" onclick="usePrompt(this)">Support for disabled candidates</button>
+                        <button class="prompt-btn" data-prompt="How can I find inclusive employers?" onclick="usePrompt(this)">Finding inclusive employers</button>
+                        <button class="prompt-btn" data-prompt="What workplace adjustments can I ask for?" onclick="usePrompt(this)">Workplace adjustments</button>
+                        <hr class="cv-actions-separator" />
+                        <label class="cv-custom-question" for="input">
+                            Or ask your own question using the message box below.
+                        </label>
+                    </div>
+                `;
+                chatInner.appendChild(ready);
+            }
+
+            function showCvReady(filename) {
+                startConversation();
+                textarea.placeholder = "Ask a question about your CV...";
+
+                const ready = document.createElement("section");
+                ready.className = "cv-ready";
+                ready.innerHTML = `
+                    <div class="ready-mark" aria-hidden="true">✓</div>
+                    <div>
+                        <p class="ready-label">CV ready</p>
+                        <h1></h1>
+                        <p>Choose a starting point or ask your own question.</p>
+                    </div>
+                    <div class="cv-actions">
+                        <button class="prompt-btn" data-prompt="Summarise my experience" onclick="usePrompt(this)">Summarise my experience</button>
+                        <button class="prompt-btn" data-prompt="Identify my key skills" onclick="usePrompt(this)">Identify my key skills</button>
+                        <button class="prompt-btn" data-prompt="Suggest improvements to my CV" onclick="usePrompt(this)">Suggest CV improvements</button>
+                        <hr class="cv-actions-separator" />
+                        <label class="cv-custom-question" for="input">
+                            Or ask your own question using the message box below.
+                        </label>
+                    </div>
+                `;
+                ready.querySelector("h1").textContent = filename;
+                chatInner.appendChild(ready);
+                textarea.focus();
             }
 
             async function sendMessage() {
@@ -514,6 +297,8 @@
 
                 const empty = document.getElementById("empty");
                 if (empty) empty.remove();
+                const ready = document.querySelector(".cv-ready");
+                if (ready) ready.remove();
 
                 appendMessage("user", message);
                 history.push({ role: "user", content: message });
@@ -556,25 +341,30 @@
             }
 
             const uploadForm = document.getElementById("uploadForm");
+            const cvFile = document.getElementById("cvFile");
+            const fileLabel = document.getElementById("fileLabel");
+            const uploadBtn = document.getElementById("uploadBtn");
+            const uploadStatus = document.getElementById("uploadStatus");
+
+            cvFile.addEventListener("change", function () {
+                fileLabel.textContent = this.files[0]
+                    ? this.files[0].name
+                    : "Choose a PDF or Word file";
+                uploadStatus.textContent = "";
+                uploadStatus.classList.remove("is-error");
+            });
+
             uploadForm.addEventListener("submit", async function (e) {
                 e.preventDefault();
-                const file = document.getElementById("cvFile").files[0];
-                const msg = document.getElementById("cvMessage").value.trim();
+                const file = cvFile.files[0];
                 if (!file) return;
-
-                const empty = document.getElementById("empty");
-                if (empty) empty.remove();
-
-                appendMessage(
-                    "user",
-                    "📎 Uploaded CV: " + file.name + (msg ? "\n" + msg : ""),
-                );
-                const typingEl = appendTyping();
 
                 const formData = new FormData();
                 formData.append("file", file);
-                formData.append("message", msg);
-                if (sessionId) formData.append("session_id", sessionId);
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = "Uploading…";
+                uploadStatus.textContent = "Preparing your CV…";
+                uploadStatus.classList.remove("is-error");
 
                 try {
                     const res = await fetch("/api/upload", {
@@ -582,25 +372,19 @@
                         body: formData,
                     });
                     const data = await res.json();
-                    const content =
-                        data.content || data.error || "No response received.";
-                    const isError = !!data.error || res.status >= 400;
+                    if (!res.ok || data.error) {
+                        throw new Error(data.error || "The upload failed.");
+                    }
 
-                    // Remember the session so later chat turns keep the CV.
-                    if (data.session_id) sessionId = data.session_id;
-
-                    typingEl.remove();
-                    appendMessage("assistant", content, isError);
-                    history.push({ role: "assistant", content });
+                    sessionId = data.session_id;
+                    history = [];
+                    showCvReady(data.filename || file.name);
                 } catch (err) {
-                    typingEl.remove();
-                    appendMessage(
-                        "assistant",
-                        "Upload error: " + err.message,
-                        true,
-                    );
+                    uploadStatus.textContent = "Upload error: " + err.message;
+                    uploadStatus.classList.add("is-error");
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "Upload CV";
                 }
-                uploadForm.reset();
             });
 
             function appendMessage(role, text, isError) {
@@ -608,10 +392,29 @@
                 div.className = "message " + role;
                 const avatar = document.createElement("div");
                 avatar.className = "avatar";
-                avatar.textContent = role === "user" ? "Y" : "AI";
+                avatar.textContent = role === "user" ? "User" : "AI";
                 const bubble = document.createElement("div");
                 bubble.className = "bubble" + (isError ? " error-bubble" : "");
-                bubble.textContent = text;
+                if (
+                    role === "assistant" &&
+                    !isError &&
+                    window.marked &&
+                    window.DOMPurify
+                ) {
+                    const rendered = marked.parse(text, {
+                        breaks: true,
+                        gfm: true,
+                    });
+                    bubble.innerHTML = DOMPurify.sanitize(rendered);
+                    bubble.querySelectorAll("a").forEach((link) => {
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
+                    });
+                } else {
+                    // User and error messages stay plain text. This is also the
+                    // safe fallback if either Markdown dependency fails to load.
+                    bubble.textContent = text;
+                }
                 div.appendChild(avatar);
                 div.appendChild(bubble);
                 chatInner.appendChild(div);

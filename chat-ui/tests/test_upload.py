@@ -22,9 +22,10 @@ import main  # noqa: E402
 
 @pytest.fixture
 def client(monkeypatch):
-    captured = {}
+    captured = {"calls": 0}
 
     async def fake_call_agent(messages):
+        captured["calls"] += 1
         captured["messages"] = messages
         return "stubbed agent reply"
 
@@ -45,13 +46,11 @@ def _docx_bytes(*paragraphs: str) -> bytes:
     return buf.getvalue()
 
 
-def _upload(client, *paragraphs, filename="cv.docx", message=None):
+def _upload(client, *paragraphs, filename="cv.docx"):
     data = _docx_bytes(*paragraphs)
-    form = {"message": message} if message is not None else None
     return client.post(
         "/api/upload",
         files={"file": (filename, data, "application/octet-stream")},
-        data=form,
     )
 
 
@@ -64,33 +63,20 @@ def test_cv_message_uses_user_role_not_system():
     assert "Ada Lovelace" in msg["content"]
 
 
-def test_upload_extracts_and_forwards_cv_to_agent(client):
+def test_upload_extracts_and_stores_cv_without_calling_agent(client):
     resp = _upload(client, "Ada Lovelace", "Mathematician")
     assert resp.status_code == 200
-    assert resp.json()["content"] == "stubbed agent reply"
+    assert resp.json()["status"] == "ready"
+    assert client.captured["calls"] == 0
 
-    # The CV text reached the agent somewhere in the messages.
-    messages = client.captured["messages"]
-    assert any("Ada Lovelace" in m["content"] for m in messages)
-    assert any("Mathematician" in m["content"] for m in messages)
+    stored = main._cv_sessions[resp.json()["session_id"]]
+    assert "Ada Lovelace" in stored["text"]
+    assert "Mathematician" in stored["text"]
 
 
 def test_upload_returns_a_session_id(client):
     resp = _upload(client, "Ada Lovelace")
     assert resp.json().get("session_id")
-
-
-def test_upload_includes_user_message_when_provided(client):
-    resp = _upload(
-        client,
-        "Grace Hopper",
-        message="Is this candidate a good fit for a Python role?",
-    )
-    assert resp.status_code == 200
-    messages = client.captured["messages"]
-    # The instruction is the final user turn; the CV is carried separately.
-    assert "Python role" in messages[-1]["content"]
-    assert any("Grace Hopper" in m["content"] for m in messages)
 
 
 def test_upload_rejects_unsupported_file_type(client):

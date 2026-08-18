@@ -18,8 +18,9 @@ import uuid
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from extraction import extract_text
 
@@ -28,10 +29,13 @@ logger = logging.getLogger("chat-ui")
 
 app = FastAPI(title="RAG Assistant")
 
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 AGENT_ENDPOINT = os.environ["AGENT_ENDPOINT"]
 AGENT_API_KEY = os.environ["AGENT_API_KEY"]
 
-INDEX_HTML = (Path(__file__).parent / "static" / "index.html").read_text()
+INDEX_HTML_PATH = STATIC_DIR / "index.html"
 
 # Uploaded CVs are kept server-side keyed by a session id, so the browser only
 # has to hold the session id and the Q&A turns — not the full CV text. The CV is
@@ -62,17 +66,14 @@ def _cv_message(cv: dict) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return INDEX_HTML
+    # Read on request so frontend edits are visible immediately during local
+    # development. Uvicorn's reload watcher only restarts for Python changes.
+    return INDEX_HTML_PATH.read_text()
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# Prepended to the CV text when the user uploads a file without their own
-# instruction, so the agent has something to act on.
-DEFAULT_CV_INSTRUCTION = "Please review the following CV."
 
 
 async def _call_agent(messages):
@@ -130,31 +131,25 @@ async def chat(request: Request):
 @app.post("/api/upload")
 async def upload(
     file: UploadFile = File(...),
-    message: str = Form(""),
-    session_id: str = Form(""),
 ):
     """Accept an uploaded CV (PDF / Word), extract its text, store it against a
-    session id, and hand it to the managed agent for an initial response."""
+    new session id, and return readiness metadata without calling the agent."""
     data = await file.read()
     try:
         cv_text = extract_text(file.filename or "", data)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
-    # Store the CV under a session id (reuse the client's if it supplied one, so
-    # re-uploading replaces the CV for that conversation).
-    session_id = session_id or str(uuid.uuid4())
+    # Upload starts a fresh CV conversation. The first agent call is made only
+    # after the user selects a suggested action or asks their own question.
+    session_id = str(uuid.uuid4())
     cv = {"filename": file.filename, "text": cv_text}
     _cv_sessions[session_id] = cv
 
-    instruction = message.strip() or DEFAULT_CV_INSTRUCTION
-    messages = [_cv_message(cv), {"role": "user", "content": instruction}]
-
-    content = await _call_agent(messages)
     return JSONResponse(
         content={
-            "content": content,
             "filename": file.filename,
             "session_id": session_id,
+            "status": "ready",
         }
     )
