@@ -7,14 +7,14 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Ubuntu:wght@400;500;700&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap"
             rel="stylesheet"
         />
         <link rel="stylesheet" href="/static/styles.css" />
     </head>
     <body>
-        <header>
-            <div class="header-logo">
+        <header class="site-header">
+            <div class="site-header__logo">
                 <svg xmlns="http://www.w3.org/2000/svg" width="312" height="81" viewBox="0 0 312 81" fill="none">
                     <g fill="#0098AF">
                         <path d="M64.8242 59.9561V21.7302H87.2403V28.0341H72.1704V36.6154H85.2667V42.9193H72.1704V53.6648H88.556V59.9687H64.8242V59.9561Z"/>
@@ -59,15 +59,15 @@
                     </defs>
                 </svg>
             </div>
-            <span class="header-title">RAG Assistant</span>
-            <span class="header-badge">Powered by DigitalOcean GenAI</span>
+            <span class="site-header__title">RAG Assistant</span>
+            <span class="site-header__badge">Powered by DigitalOcean GenAI</span>
         </header>
 
-        <main class="app-main">
-            <div class="chat-container" id="chat">
-                <div class="chat-inner" id="chatInner">
+        <main class="app">
+            <div class="chat__viewport" id="chat">
+                <div class="chat__content" id="chatInner">
                 <button
-                    class="back-btn"
+                    class="chat__back-button"
                     id="backBtn"
                     type="button"
                     onclick="backToStart()"
@@ -79,26 +79,27 @@
                     Back
                 </button>
                 <div class="landing" id="landing">
-                    <div class="landing-intro">
-                        <h1>How can we help?</h1>
-                        <p>
+                    <div class="landing__intro">
+                        <h1 class="landing__title">How can we help?</h1>
+                        <p class="landing__description">
                             Upload your CV for tailored support, or ask a
                             general question using Evenbreak's resources.
                         </p>
                     </div>
 
-                    <div class="route-cards">
+                    <div class="landing__routes">
                         <section class="route-card" aria-labelledby="upload-title">
-                            <div class="route-icon" aria-hidden="true">CV</div>
-                            <h2 id="upload-title">Upload your CV</h2>
-                            <p>
+                            <div class="route-card__icon" aria-hidden="true">CV</div>
+                            <h2 class="route-card__title" id="upload-title">Upload your CV</h2>
+                            <p class="route-card__description">
                                 Get help understanding your experience, skills,
                                 and opportunities to improve your CV.
                             </p>
                             <form id="uploadForm" class="upload-form">
-                                <label class="file-picker" for="cvFile">
+                                <label class="upload-form__file-picker" for="cvFile">
                                     <span id="fileLabel">Choose a PDF or Word file</span>
                                     <input
+                                        class="upload-form__file-input"
                                         type="file"
                                         id="cvFile"
                                         name="file"
@@ -106,21 +107,21 @@
                                         required
                                     />
                                 </label>
-                                <button class="primary-btn" id="uploadBtn" type="submit">
+                                <button class="button button--primary" id="uploadBtn" type="submit">
                                     Upload CV
                                 </button>
-                                <p class="form-status" id="uploadStatus" role="status"></p>
+                                <p class="upload-form__status" id="uploadStatus" role="status"></p>
                             </form>
                         </section>
 
                         <section class="route-card" aria-labelledby="qa-title">
-                            <div class="route-icon" aria-hidden="true">?</div>
-                            <h2 id="qa-title">Questions &amp; answers</h2>
-                            <p>
+                            <div class="route-card__icon" aria-hidden="true">?</div>
+                            <h2 class="route-card__title" id="qa-title">Questions &amp; answers</h2>
+                            <p class="route-card__description">
                                 Ask general questions about inclusive careers,
                                 work, and the resources in our knowledge base.
                             </p>
-                            <button class="primary-btn" type="button" onclick="startGeneralQA()">
+                            <button class="button button--primary" type="button" onclick="startGeneralQA()">
                                 Ask a question
                             </button>
                         </section>
@@ -130,21 +131,22 @@
             </div>
 
             <form
-                class="input-area"
+                class="composer"
                 id="composer"
                 aria-label="Message composer"
                 hidden
             >
-                <div class="input-inner">
-                    <div class="input-wrapper">
+                <div class="composer__inner">
+                    <div class="composer__field">
                         <textarea
+                            class="composer__textarea"
                             id="input"
                             rows="1"
                             placeholder="Ask a question..."
                         ></textarea>
                     </div>
                     <button
-                        class="send-btn"
+                        class="composer__send-button"
                         id="send"
                         type="submit"
                         title="Send message"
@@ -154,14 +156,14 @@
                         </svg>
                     </button>
                 </div>
-                <div class="input-hint">
+                <div class="composer__hint">
                     Press Enter to send, Shift+Enter for new line
                 </div>
             </form>
         </main>
 
         <footer class="site-footer">
-            <p>&copy; Evenbreak. All rights reserved.</p>
+            <p class="site-footer__copyright">&copy; Evenbreak. All rights reserved.</p>
         </footer>
 
         <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
@@ -179,8 +181,8 @@
             let sessionId = null;
 
             textarea.addEventListener("input", function () {
-                this.style.height = "auto";
-                this.style.height = Math.min(this.scrollHeight, 144) + "px";
+                this.style.blockSize = "auto";
+                this.style.blockSize = Math.min(this.scrollHeight, 144) + "px";
             });
             textarea.addEventListener("keydown", function (e) {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -202,28 +204,28 @@
             function startConversation() {
                 const landing = document.getElementById("landing");
                 landing.hidden = true;
-                chatInner.classList.add("is-conversation");
+                chatInner.classList.add("chat__content--conversation");
                 backBtn.hidden = false;
                 composer.hidden = false;
             }
 
             function backToStart() {
                 chatInner
-                    .querySelectorAll(".message, .cv-ready")
+                    .querySelectorAll(".message, .ready-panel")
                     .forEach((element) => element.remove());
                 history = [];
                 sessionId = null;
                 textarea.value = "";
-                textarea.style.height = "auto";
+                textarea.style.blockSize = "auto";
                 textarea.placeholder = "Ask a question...";
                 composer.hidden = true;
                 backBtn.hidden = true;
-                chatInner.classList.remove("is-conversation");
+                chatInner.classList.remove("chat__content--conversation");
 
                 uploadForm.reset();
                 fileLabel.textContent = "Choose a PDF or Word file";
                 uploadStatus.textContent = "";
-                uploadStatus.classList.remove("is-error");
+                uploadStatus.classList.remove("upload-form__status--error");
                 uploadBtn.disabled = false;
                 uploadBtn.textContent = "Upload CV";
 
@@ -242,20 +244,20 @@
 
             function showGeneralReady() {
                 const ready = document.createElement("section");
-                ready.className = "cv-ready";
+                ready.className = "ready-panel";
                 ready.innerHTML = `
-                    <div class="ready-mark" aria-hidden="true">?</div>
-                    <div>
-                        <p class="ready-label">General Q&amp;A</p>
-                        <h1>What would you like to know?</h1>
-                        <p>Ask about inclusive careers, finding work, workplace support, or anything covered by Evenbreak's resources.</p>
+                    <div class="ready-panel__mark" aria-hidden="true">?</div>
+                    <div class="ready-panel__content">
+                        <p class="ready-panel__label">General Q&amp;A</p>
+                        <h1 class="ready-panel__title">What would you like to know?</h1>
+                        <p class="ready-panel__description">Ask about inclusive careers, finding work, workplace support, or anything covered by Evenbreak's resources.</p>
                     </div>
-                    <div class="cv-actions">
-                        <button class="prompt-btn" data-prompt="What support is available for disabled candidates?" onclick="usePrompt(this)">Support for disabled candidates</button>
-                        <button class="prompt-btn" data-prompt="How can I find inclusive employers?" onclick="usePrompt(this)">Finding inclusive employers</button>
-                        <button class="prompt-btn" data-prompt="What workplace adjustments can I ask for?" onclick="usePrompt(this)">Workplace adjustments</button>
-                        <hr class="cv-actions-separator" />
-                        <label class="cv-custom-question" for="input">
+                    <div class="ready-panel__actions">
+                        <button class="prompt-button" data-prompt="What support is available for disabled candidates?" onclick="usePrompt(this)">Support for disabled candidates</button>
+                        <button class="prompt-button" data-prompt="How can I find inclusive employers?" onclick="usePrompt(this)">Finding inclusive employers</button>
+                        <button class="prompt-button" data-prompt="What workplace adjustments can I ask for?" onclick="usePrompt(this)">Workplace adjustments</button>
+                        <hr class="ready-panel__separator" />
+                        <label class="ready-panel__custom-question" for="input">
                             Or ask your own question using the message box below.
                         </label>
                     </div>
@@ -268,25 +270,25 @@
                 textarea.placeholder = "Ask a question about your CV...";
 
                 const ready = document.createElement("section");
-                ready.className = "cv-ready";
+                ready.className = "ready-panel";
                 ready.innerHTML = `
-                    <div class="ready-mark" aria-hidden="true">✓</div>
-                    <div>
-                        <p class="ready-label">CV ready</p>
-                        <h1></h1>
-                        <p>Choose a starting point or ask your own question.</p>
+                    <div class="ready-panel__mark" aria-hidden="true">✓</div>
+                    <div class="ready-panel__content">
+                        <p class="ready-panel__label">CV ready</p>
+                        <h1 class="ready-panel__title"></h1>
+                        <p class="ready-panel__description">Choose a starting point or ask your own question.</p>
                     </div>
-                    <div class="cv-actions">
-                        <button class="prompt-btn" data-prompt="Summarise my experience" onclick="usePrompt(this)">Summarise my experience</button>
-                        <button class="prompt-btn" data-prompt="Identify my key skills" onclick="usePrompt(this)">Identify my key skills</button>
-                        <button class="prompt-btn" data-prompt="Suggest improvements to my CV" onclick="usePrompt(this)">Suggest CV improvements</button>
-                        <hr class="cv-actions-separator" />
-                        <label class="cv-custom-question" for="input">
+                    <div class="ready-panel__actions">
+                        <button class="prompt-button" data-prompt="Summarise my experience" onclick="usePrompt(this)">Summarise my experience</button>
+                        <button class="prompt-button" data-prompt="Identify my key skills" onclick="usePrompt(this)">Identify my key skills</button>
+                        <button class="prompt-button" data-prompt="Suggest improvements to my CV" onclick="usePrompt(this)">Suggest CV improvements</button>
+                        <hr class="ready-panel__separator" />
+                        <label class="ready-panel__custom-question" for="input">
                             Or ask your own question using the message box below.
                         </label>
                     </div>
                 `;
-                ready.querySelector("h1").textContent = filename;
+                ready.querySelector(".ready-panel__title").textContent = filename;
                 chatInner.appendChild(ready);
                 textarea.focus();
             }
@@ -295,16 +297,14 @@
                 const message = textarea.value.trim();
                 if (!message) return;
 
-                const empty = document.getElementById("empty");
-                if (empty) empty.remove();
-                const ready = document.querySelector(".cv-ready");
+                const ready = document.querySelector(".ready-panel");
                 if (ready) ready.remove();
 
                 appendMessage("user", message);
                 history.push({ role: "user", content: message });
 
                 textarea.value = "";
-                textarea.style.height = "auto";
+                textarea.style.blockSize = "auto";
                 sendBtn.disabled = true;
 
                 const typingEl = appendTyping();
@@ -351,7 +351,7 @@
                     ? this.files[0].name
                     : "Choose a PDF or Word file";
                 uploadStatus.textContent = "";
-                uploadStatus.classList.remove("is-error");
+                uploadStatus.classList.remove("upload-form__status--error");
             });
 
             uploadForm.addEventListener("submit", async function (e) {
@@ -364,7 +364,7 @@
                 uploadBtn.disabled = true;
                 uploadBtn.textContent = "Uploading…";
                 uploadStatus.textContent = "Preparing your CV…";
-                uploadStatus.classList.remove("is-error");
+                uploadStatus.classList.remove("upload-form__status--error");
 
                 try {
                     const res = await fetch("/api/upload", {
@@ -381,7 +381,7 @@
                     showCvReady(data.filename || file.name);
                 } catch (err) {
                     uploadStatus.textContent = "Upload error: " + err.message;
-                    uploadStatus.classList.add("is-error");
+                    uploadStatus.classList.add("upload-form__status--error");
                     uploadBtn.disabled = false;
                     uploadBtn.textContent = "Upload CV";
                 }
@@ -389,12 +389,14 @@
 
             function appendMessage(role, text, isError) {
                 const div = document.createElement("div");
-                div.className = "message " + role;
+                div.className = `message message--${role}`;
                 const avatar = document.createElement("div");
-                avatar.className = "avatar";
+                avatar.className = "message__avatar";
                 avatar.textContent = role === "user" ? "User" : "AI";
                 const bubble = document.createElement("div");
-                bubble.className = "bubble" + (isError ? " error-bubble" : "");
+                bubble.className =
+                    "message__bubble" +
+                    (isError ? " message__bubble--error" : "");
                 if (
                     role === "assistant" &&
                     !isError &&
@@ -405,6 +407,7 @@
                         breaks: true,
                         gfm: true,
                     });
+                    bubble.classList.add("richtext");
                     bubble.innerHTML = DOMPurify.sanitize(rendered);
                     bubble.querySelectorAll("a").forEach((link) => {
                         link.target = "_blank";
@@ -424,14 +427,14 @@
 
             function appendTyping() {
                 const div = document.createElement("div");
-                div.className = "message assistant";
+                div.className = "message message--assistant";
                 const avatar = document.createElement("div");
-                avatar.className = "avatar";
+                avatar.className = "message__avatar";
                 avatar.textContent = "AI";
                 const bubble = document.createElement("div");
-                bubble.className = "bubble";
+                bubble.className = "message__bubble";
                 bubble.innerHTML =
-                    '<div class="typing-dots"><span></span><span></span><span></span></div>';
+                    '<div class="typing-indicator"><span class="typing-indicator__dot"></span><span class="typing-indicator__dot"></span><span class="typing-indicator__dot"></span></div>';
                 div.appendChild(avatar);
                 div.appendChild(bubble);
                 chatInner.appendChild(div);
