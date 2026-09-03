@@ -118,7 +118,6 @@ variable "agent_api_key" {
 
 variable "agent_instruction" {
   type        = string
-  default     = "You are a helpful RAG assistant. Answer questions using the knowledge base context provided. If you don't know the answer, say so honestly."
   description = "System instruction for the managed agent."
 }
 

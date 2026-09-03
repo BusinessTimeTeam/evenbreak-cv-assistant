@@ -81,7 +81,7 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 | `embedding_model` | `qwen3-embedding-0.6b` | Embedding model name |
 | `embedding_model_uuid` | *(required)* | UUID of the embedding model (resolved by do-terraform) |
 | `app_instance_size` | `apps-s-1vcpu-1gb` | App Platform instance size slug |
-| `agent_instruction` | *(see variables.tf)* | System instruction for the agent |
+| `agent_instruction` | *(required; set in terraform.tfvars)* | System instruction for the agent |
 | `agent_temperature` | `0` | Inference temperature (0 = deterministic) |
 | `agent_max_tokens` | `4096` | Maximum tokens in the agent response |
 | `agent_k` | `5` | Number of KB documents to retrieve per query |
