@@ -199,6 +199,9 @@
             // Set after a CV upload; sent on every chat turn so the server can
             // re-attach the stored CV. The CV text itself is never held here.
             let sessionId = null;
+            // Bumped whenever the conversation is abandoned, so a reply that
+            // arrives afterwards is dropped instead of reviving the old one.
+            let conversationGeneration = 0;
 
             // Model trial: remove after the trial. The conversation's model and
             // running cost (integer micro-USD), as last returned by the server.
@@ -285,6 +288,8 @@
             }
 
             function backToStart() {
+                conversationGeneration += 1;
+                sendBtn.disabled = false;
                 chatInner
                     .querySelectorAll(".message, .ready-panel")
                     .forEach((element) => element.remove());
@@ -387,6 +392,7 @@
                 sendBtn.disabled = true;
 
                 const typingEl = appendTyping();
+                const generation = conversationGeneration;
 
                 try {
                     const res = await fetch("/api/chat", {
@@ -403,6 +409,7 @@
                         }),
                     });
                     const data = await res.json();
+                    if (generation !== conversationGeneration) return;
                     const content =
                         data.content || data.error || "No response received.";
                     const isError = !!data.error || res.status >= 400;
@@ -428,6 +435,7 @@
                         showCost();
                     }
                 } catch (err) {
+                    if (generation !== conversationGeneration) return;
                     typingEl.remove();
                     appendMessage(
                         "assistant",
