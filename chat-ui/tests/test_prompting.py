@@ -31,7 +31,7 @@ def _rewrite(history=None, cv_text=None):
     return asyncio.run(rewrite_queries(CONFIG, MESSAGE, history or [], cv_text))
 
 
-def test_system_prompt_file_matches_current_agent_instruction():
+def test_system_prompt_is_the_uk_cv_assistant_prompt():
     prompt = load_system_prompt()
 
     assert "You are Evenbreak's UK-focused CV, employment and disability-inclusion assistant." in prompt

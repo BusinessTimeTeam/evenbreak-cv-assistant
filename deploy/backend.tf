@@ -6,7 +6,7 @@
 # own state.
 #
 # Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (set to the
-# Spaces key by env.sh), not from the provider's spaces_* vars.
+# Spaces key by env.sh).
 terraform {
   backend "s3" {
     bucket = "evenbreak-cv-assistant-tfstate"

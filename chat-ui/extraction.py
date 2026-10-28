@@ -1,7 +1,7 @@
 """Text extraction for uploaded CV documents.
 
-The managed agent only accepts text, so uploaded CVs (PDF / Word) are converted
-to plain text here before being handed to the agent as conversation context.
+The chat model only accepts text, so uploaded CVs (PDF / Word) are converted
+to plain text here before being handed to the model as conversation context.
 """
 
 import io

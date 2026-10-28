@@ -1,4 +1,4 @@
-"""Tests for the old-vs-new comparison script. HTTP is stubbed."""
+"""Tests for the comparison script. HTTP is stubbed."""
 
 import asyncio
 import json
@@ -6,7 +6,6 @@ import json
 import httpx
 
 import compare
-import main
 
 CASE = {
     "id": "two-turn",
@@ -19,31 +18,6 @@ CASE = {
 def _cvs(tmp_path):
     (tmp_path / "cv.md").write_text("Alex Example\nStore Manager")
     return tmp_path
-
-
-def test_run_old_puts_cv_message_first_and_threads_history(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_ENDPOINT", "https://agent.example/api/v1/chat/completions")
-    monkeypatch.setenv("AGENT_API_KEY", "agent-key")
-    requests = []
-
-    def handler(request):
-        body = json.loads(request.content)
-        requests.append(body["messages"])
-        return httpx.Response(
-            200, json={"choices": [{"message": {"content": f"answer {len(requests)}"}}]}
-        )
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    result = asyncio.run(compare.run_old(CASE, _cvs(tmp_path), client=client))
-
-    cv_message = main._cv_message({"filename": "cv.md", "text": "Alex Example\nStore Manager"})
-    assert requests[1] == [
-        cv_message,
-        {"role": "user", "content": "First question?"},
-        {"role": "assistant", "content": "answer 1"},
-        {"role": "user", "content": "Follow-up about that?"},
-    ]
-    assert [r["answer"] for r in result] == ["answer 1", "answer 2"]
 
 
 def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
@@ -70,17 +44,6 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
         {"role": "assistant", "content": "new 1"},
     ]
     assert result[1] == {"turn": "Follow-up about that?", "answer": "new 2", "sources": ["a.md"]}
-
-
-def test_run_old_records_agent_errors_as_answers(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENT_ENDPOINT", "https://agent.example/api/v1/chat/completions")
-    monkeypatch.setenv("AGENT_API_KEY", "agent-key")
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500, text="boom")))
-
-    result = asyncio.run(compare.run_old({**CASE, "turns": ["Q?"]}, _cvs(tmp_path), client=client))
-
-    assert result[0]["answer"].startswith("Error:")
-    assert "500" in result[0]["answer"]
 
 
 def test_render_report_shows_both_answers_and_sources_per_turn():

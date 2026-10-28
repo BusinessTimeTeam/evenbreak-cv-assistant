@@ -70,19 +70,6 @@ credentials from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (CI: the
 - **Inference**: Serverless — no GPU instances to manage.
 - **Resource naming**: All resources are suffixed with a random 4-character string to avoid naming collisions.
 
-## Known issues
-
-### Old knowledge bases leave an OpenSearch cluster behind
-
-The managed knowledge base this project used to run auto-provisioned an
-OpenSearch cluster (named `genai-*`, ~$19.60/month) that `terraform destroy` does
-not delete. If one is still listed, delete it:
-
-```bash
-doctl databases list            # find the orphaned genai-* opensearch cluster
-doctl databases delete <id>
-```
-
 ## Chat UI
 
 The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:

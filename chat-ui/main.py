@@ -151,14 +151,14 @@ async def upload(
     file: UploadFile = File(...),
 ):
     """Accept an uploaded CV (PDF / Word), extract its text, store it against a
-    new session id, and return readiness metadata without calling the agent."""
+    new session id, and return readiness metadata without calling the model."""
     data = await file.read()
     try:
         cv_text = extract_text(file.filename or "", data)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
-    # Upload starts a fresh CV conversation. The first agent call is made only
+    # Upload starts a fresh CV conversation. The first model call is made only
     # after the user selects a suggested action or asks their own question.
     session_id = str(uuid.uuid4())
     cv = {"filename": file.filename, "text": cv_text}
