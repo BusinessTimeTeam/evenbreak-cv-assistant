@@ -83,6 +83,46 @@ def test_load_corrupt_file_raises_helpful_error(tmp_path):
         Index.load(path, expected_embedding_model=MODEL)
 
 
+def test_load_truncated_index_raises_helpful_error(tmp_path):
+    # e.g. an interrupted build: a real .npz cut short is a BadZipFile.
+    path = tmp_path / "kb_index.npz"
+    _index().save(path)
+    path.write_bytes(path.read_bytes()[: path.stat().st_size // 2])
+
+    with pytest.raises(IndexLoadError, match="docker compose build"):
+        Index.load(path, expected_embedding_model=MODEL)
+
+
+def test_load_index_with_incomplete_metadata_raises_helpful_error(tmp_path):
+    path = tmp_path / "kb_index.npz"
+    np.savez_compressed(
+        path,
+        vectors=np.eye(2, dtype=np.float32),
+        sources=np.array(["a", "b"]),
+        texts=np.array(["alpha", "beta"]),
+        metadata=np.array('{"embedding_model": "qwen3-embedding-0.6b"}'),
+    )
+
+    with pytest.raises(IndexLoadError, match="docker compose build"):
+        Index.load(path, expected_embedding_model=MODEL)
+
+
+def test_failed_save_leaves_the_existing_index_intact(tmp_path, monkeypatch):
+    path = tmp_path / "kb_index.npz"
+    _index().save(path)
+
+    def broken_savez(fh, **arrays):
+        fh.write(b"partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(retrieval.np, "savez_compressed", broken_savez)
+    with pytest.raises(OSError):
+        _index(source_hash="h2").save(path)
+
+    assert Index.load(path, expected_embedding_model=MODEL).source_hash == "h1"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["kb_index.npz"]
+
+
 def test_build_index_embeds_every_chunk_and_records_metadata(tmp_path, monkeypatch):
     (tmp_path / "one.md").write_text("## One\nReasonable adjustments at interview.")
     (tmp_path / "two.md").write_text("## Two\nDisclosing a disability on a CV.")

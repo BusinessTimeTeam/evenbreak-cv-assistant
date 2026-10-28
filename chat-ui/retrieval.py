@@ -12,6 +12,8 @@ chunking and inference from the app.
 
 import hashlib
 import json
+import os
+import zipfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -94,25 +96,31 @@ class Index:
             "built_at": self._built_at,
             "count": len(self._chunks),
         }
-        with path.open("wb") as fh:
-            np.savez_compressed(
-                fh,
-                vectors=self._vectors,
-                sources=np.array([c.source for c in self._chunks], dtype=np.str_),
-                texts=np.array([c.text for c in self._chunks], dtype=np.str_),
-                metadata=np.array(json.dumps(metadata)),
-            )
+        # Write to a temporary file and rename, so an interrupted build never
+        # leaves a half-written index where the app will load it.
+        tmp = path.with_name(path.name + ".tmp")
+        try:
+            with tmp.open("wb") as fh:
+                np.savez_compressed(
+                    fh,
+                    vectors=self._vectors,
+                    sources=np.array([c.source for c in self._chunks], dtype=np.str_),
+                    texts=np.array([c.text for c in self._chunks], dtype=np.str_),
+                    metadata=np.array(json.dumps(metadata)),
+                )
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     @classmethod
     def load(cls, path: Path, *, expected_embedding_model: str) -> "Index":
         try:
             with np.load(path, allow_pickle=False) as data:
                 metadata = json.loads(str(data["metadata"]))
-                chunks = [Chunk(str(s), str(t)) for s, t in zip(data["sources"], data["texts"])]
-                vectors = data["vectors"]
+                sources, texts, vectors = data["sources"], data["texts"], data["vectors"]
         except FileNotFoundError as exc:
             raise IndexLoadError(f"No knowledge-base index at {path}. {REBUILD_HINT}") from exc
-        except (OSError, ValueError, KeyError) as exc:
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
             raise IndexLoadError(f"Could not read the knowledge-base index at {path} ({exc}). {REBUILD_HINT}") from exc
 
         if metadata.get("embedding_model") != expected_embedding_model:
@@ -121,13 +129,18 @@ class Index:
                 f"{metadata.get('embedding_model')!r}, but queries use {expected_embedding_model!r}. "
                 f"{REBUILD_HINT}"
             )
-        return cls(
-            chunks,
-            vectors,
-            embedding_model=metadata["embedding_model"],
-            source_hash=metadata["source_hash"],
-            built_at=metadata["built_at"],
-        )
+        try:
+            if len(sources) != len(texts):
+                raise ValueError(f"{len(sources)} sources but {len(texts)} texts")
+            return cls(
+                [Chunk(str(s), str(t)) for s, t in zip(sources, texts)],
+                vectors,
+                embedding_model=metadata["embedding_model"],
+                source_hash=metadata["source_hash"],
+                built_at=metadata["built_at"],
+            )
+        except (KeyError, ValueError) as exc:
+            raise IndexLoadError(f"The knowledge-base index at {path} is incomplete ({exc!r}). {REBUILD_HINT}") from exc
 
 
 def source_hash(documents: list[tuple[str, str]]) -> str:
