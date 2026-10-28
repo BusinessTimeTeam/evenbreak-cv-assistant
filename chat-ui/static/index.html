@@ -63,6 +63,16 @@
             <span class="site-header__badge">Powered by DigitalOcean GenAI</span>
         </header>
 
+        <!-- Model trial: remove after the trial -->
+        <div class="trial-strip" id="trialStrip" hidden>
+            <span class="trial-strip__model">
+                Model: <strong id="trialModelName"></strong>
+                <span aria-label="locked for this conversation" title="Locked for this conversation">🔒</span>
+            </span>
+            <span class="trial-strip__cost" id="trialCost" aria-live="polite"></span>
+        </div>
+        <!-- /Model trial -->
+
         <main class="app">
             <div class="chat__viewport" id="chat">
                 <div class="chat__content" id="chatInner">
@@ -85,6 +95,13 @@
                             Upload your CV for tailored support, or ask a
                             general question using Evenbreak's resources.
                         </p>
+                        <!-- Model trial: remove after the trial -->
+                        <div class="trial-picker">
+                            <label class="trial-picker__label" for="modelSelect">AI model for this conversation</label>
+                            <select class="trial-picker__select" id="modelSelect"></select>
+                        </div>
+                        <!-- /Model trial -->
+                        <p class="landing__notice" id="landingNotice" role="status"></p>
                     </div>
 
                     <div class="landing__routes">
@@ -183,6 +200,60 @@
             // re-attach the stored CV. The CV text itself is never held here.
             let sessionId = null;
 
+            // Model trial: remove after the trial. The conversation's model and
+            // running cost (integer micro-USD), as last returned by the server.
+            // Both are signed into historyToken; the server rejects edits.
+            const modelSelect = document.getElementById("modelSelect");
+            const trialStrip = document.getElementById("trialStrip");
+            const modelNames = {};
+            let conversationModel = null;
+            let totalMicrousd = 0;
+
+            async function loadModels() {
+                try {
+                    const res = await fetch("/api/models");
+                    const data = await res.json();
+                    for (const group of data.groups) {
+                        const optgroup = document.createElement("optgroup");
+                        optgroup.label = group.label;
+                        for (const model of group.models) {
+                            modelNames[model.id] = model.name;
+                            optgroup.appendChild(new Option(model.name, model.id));
+                        }
+                        modelSelect.appendChild(optgroup);
+                    }
+                    modelSelect.value = data.default;
+                } catch (err) {
+                    // The server falls back to its default model when none is sent.
+                    modelSelect.appendChild(new Option("Default model", ""));
+                }
+            }
+
+            function lockModel(model, total) {
+                conversationModel = model || modelSelect.value || null;
+                totalMicrousd = total || 0;
+                modelSelect.disabled = true;
+                document.getElementById("trialModelName").textContent =
+                    modelNames[conversationModel] || conversationModel || "Default model";
+                showCost();
+                trialStrip.hidden = false;
+            }
+
+            function showCost() {
+                document.getElementById("trialCost").textContent =
+                    "Conversation cost so far: $" + (totalMicrousd / 1e6).toFixed(4);
+            }
+
+            function unlockModel() {
+                conversationModel = null;
+                totalMicrousd = 0;
+                modelSelect.disabled = false;
+                trialStrip.hidden = true;
+            }
+
+            loadModels();
+            // /Model trial
+
             textarea.addEventListener("input", function () {
                 this.style.blockSize = "auto";
                 this.style.blockSize = Math.min(this.scrollHeight, 144) + "px";
@@ -205,6 +276,7 @@
             }
 
             function startConversation() {
+                showNotice("");
                 const landing = document.getElementById("landing");
                 landing.hidden = true;
                 chatInner.classList.add("chat__content--conversation");
@@ -219,6 +291,7 @@
                 history = [];
                 historyToken = null;
                 sessionId = null;
+                unlockModel(); // Model trial
                 textarea.value = "";
                 textarea.style.blockSize = "auto";
                 textarea.placeholder = "Ask a question...";
@@ -242,6 +315,7 @@
                 history = [];
                 historyToken = null;
                 startConversation();
+                lockModel(); // Model trial
                 textarea.placeholder = "Ask a question about Evenbreak's resources...";
                 showGeneralReady();
                 textarea.focus();
@@ -323,6 +397,9 @@
                             history,
                             history_token: historyToken,
                             session_id: sessionId,
+                            // Model trial
+                            model: conversationModel,
+                            total_microusd: totalMicrousd,
                         }),
                     });
                     const data = await res.json();
@@ -337,17 +414,18 @@
                         textarea.value = message;
                     }
                     if (data.expired) {
-                        // Start the conversation again but keep the CV session.
-                        history = [];
-                        historyToken = null;
-                        chatInner
-                            .querySelectorAll(".message")
-                            .forEach((element) => element.remove());
-                        appendMessage("assistant", data.error, true);
-                        textarea.value = message;
+                        // The conversation (and its model and cost) can't
+                        // continue, so start a new one from the landing page.
+                        backToStart();
+                        showNotice(data.error);
                     } else if (data.history) {
                         history = data.history;
                         historyToken = data.history_token;
+                        sessionId = data.session_id;
+                        // Model trial
+                        conversationModel = data.model;
+                        totalMicrousd = data.total_microusd;
+                        showCost();
                     }
                 } catch (err) {
                     typingEl.remove();
@@ -383,6 +461,7 @@
 
                 const formData = new FormData();
                 formData.append("file", file);
+                if (modelSelect.value) formData.append("model", modelSelect.value); // Model trial
                 uploadBtn.disabled = true;
                 uploadBtn.textContent = "Uploading…";
                 uploadStatus.textContent = "Preparing your CV…";
@@ -400,8 +479,9 @@
 
                     sessionId = data.session_id;
                     history = [];
-                    historyToken = null;
+                    historyToken = data.history_token;
                     showCvReady(data.filename || file.name);
+                    lockModel(data.model, data.total_microusd); // Model trial
                 } catch (err) {
                     uploadStatus.textContent = "Upload error: " + err.message;
                     uploadStatus.classList.add("upload-form__status--error");
@@ -409,6 +489,10 @@
                     uploadBtn.textContent = "Upload CV";
                 }
             });
+
+            function showNotice(text) {
+                document.getElementById("landingNotice").textContent = text;
+            }
 
             function appendMessage(role, text, isError) {
                 const div = document.createElement("div");

@@ -874,3 +874,95 @@ body {
   padding-inline: var(--eb-space-xl);
   text-align: center;
 }
+
+/* Landing notice, e.g. why the last conversation ended. */
+.landing__notice {
+  color: var(--eb-color-error);
+  font-size: var(--eb-font-size-sm);
+  margin-block-start: var(--eb-space-lg);
+}
+
+.landing__notice:empty {
+  display: none;
+}
+
+/* Model trial: remove after the trial.
+ * The strip sits between the header and the app; explicit rows keep the
+ * layout intact while it is hidden. */
+body {
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.site-header {
+  grid-row: 1;
+}
+
+.trial-strip {
+  align-items: center;
+  background-color: var(--eb-color-surface-muted);
+  border-block-end: var(--eb-border-width-default) solid var(--eb-color-border);
+  color: var(--eb-color-ink);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--eb-font-size-sm);
+  gap: var(--eb-space-xs) var(--eb-space-lg);
+  grid-row: 2;
+  justify-content: space-between;
+  padding-block: var(--eb-space-sm);
+  padding-inline: var(--eb-space-xl);
+}
+
+.trial-strip[hidden] {
+  display: none;
+}
+
+.trial-strip__cost {
+  color: var(--eb-color-teal-dark);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--eb-font-weight-medium);
+}
+
+.app {
+  grid-row: 3;
+}
+
+.site-footer {
+  grid-row: 4;
+}
+
+.trial-picker {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--eb-space-xs);
+  margin-block-start: var(--eb-space-xl);
+}
+
+.trial-picker__label {
+  color: var(--eb-color-ink);
+  font-size: var(--eb-font-size-sm);
+  font-weight: var(--eb-font-weight-medium);
+}
+
+.trial-picker__select {
+  background-color: var(--eb-color-surface);
+  border: var(--eb-border-width-default) solid var(--eb-color-border);
+  border-radius: var(--eb-radius-small);
+  color: var(--eb-color-ink);
+  font: inherit;
+  max-inline-size: 100%;
+  min-inline-size: 16rem;
+  padding-block: var(--eb-space-sm);
+  padding-inline: var(--eb-space-md);
+}
+
+.trial-picker__select:focus-visible {
+  outline: var(--eb-border-width-strong) solid var(--eb-color-yellow);
+  outline-offset: 2px;
+}
+
+.trial-picker__select:disabled {
+  background-color: var(--eb-color-surface-muted);
+  color: var(--eb-color-ink-muted);
+}
+/* /Model trial */
