@@ -17,6 +17,7 @@ locally):
     RETRIEVAL_K        — passages retrieved per turn, default 10
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -29,6 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from extraction import extract_text
+from guardrails import REPLIES, Verdict, check_cv, check_message
 from history_signing import HistoryTokenError, sign_history, verify_history
 from inference import InferenceConfig, InferenceError, chat, embed
 from prompting import build_messages, load_system_prompt, rewrite_queries
@@ -104,20 +106,52 @@ async def health():
     return {"status": "ok"}
 
 
-async def _answer(
+async def _retrieve(
     message: str, history: list[dict], cv: dict | None
-) -> tuple[str, list[ScoredChunk]]:
-    """Retrieve knowledge-base passages for this turn and ask the chat model.
+) -> list[ScoredChunk]:
+    """Rewrite the conversation into queries, embed them and search the index.
 
-    Raises InferenceError if embedding or the chat call fails; query rewriting
-    falls back to the raw message on its own.
+    Raises InferenceError if embedding fails; query rewriting falls back to the
+    raw message on its own.
     """
     queries = await rewrite_queries(_config, message, history, cv["text"] if cv else None)
-    passages = _index.search(await embed(_config, queries), k=RETRIEVAL_K)
+    return _index.search(await embed(_config, queries), k=RETRIEVAL_K)
+
+
+async def _check_message_safely(message: str, history: list[dict]):
+    """Run the message check, failing closed on any unexpected exception."""
+    try:
+        return await check_message(_config, message, history)
+    except Exception as exc:
+        logger.warning("Message check crashed: %s", type(exc).__name__)
+        return Verdict(False, "check_failed")
+
+
+async def _answer(
+    message: str, history: list[dict], cv: dict | None
+) -> tuple[str, list[ScoredChunk], str | None]:
+    """Check the message, retrieve passages and ask the chat model.
+
+    The check and retrieval run together. Returns ``(content, passages,
+    blocked_reason)``; a blocked message gets a canned reply and never reaches
+    the chat model. Raises InferenceError if retrieval or the chat call fails
+    for an allowed message.
+    """
+    verdict, passages = await asyncio.gather(
+        _check_message_safely(message, history),
+        _retrieve(message, history, cv),
+        return_exceptions=True,
+    )
+    if isinstance(verdict, BaseException):
+        raise verdict
+    if not verdict.allowed:
+        return REPLIES[verdict.reason], [], verdict.reason
+    if isinstance(passages, BaseException):
+        raise passages
     messages = build_messages(
         SYSTEM_PROMPT, _cv_message(cv) if cv else None, passages, history, message
     )
-    return await chat(_config, messages), passages
+    return await chat(_config, messages), passages, None
 
 
 @app.post("/api/chat")
@@ -153,7 +187,7 @@ async def chat_endpoint(request: Request):
     cv = _cv_sessions.get(session_id) if session_id else None
 
     try:
-        content, passages = await _answer(message, history, cv)
+        content, passages, blocked = await _answer(message, history, cv)
     except InferenceError as exc:
         logger.warning("Chat turn failed: %s", exc)
         # The failed turn isn't added, so the browser keeps its verified history.
@@ -161,6 +195,23 @@ async def chat_endpoint(request: Request):
             content={
                 "content": f"Error: {exc}",
                 "sources": [],
+                "blocked": None,
+                "history": received,
+                "history_token": history_token,
+            }
+        )
+    if blocked:
+        logger.info(
+            "Blocked chat message: reason=%s cv=%s length=%d",
+            blocked,
+            cv is not None,
+            len(message),
+        )
+        return JSONResponse(
+            content={
+                "content": content,
+                "sources": [],
+                "blocked": blocked,
                 "history": received,
                 "history_token": history_token,
             }
@@ -173,6 +224,7 @@ async def chat_endpoint(request: Request):
         content={
             "content": content,
             "sources": [{"source": p.source, "score": p.score} for p in passages],
+            "blocked": None,
             "history": updated,
             "history_token": sign_history(HISTORY_SIGNING_KEY, updated, session_id),
         }
@@ -190,6 +242,16 @@ async def upload(
         cv_text = extract_text(file.filename or "", data)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    try:
+        verdict = await check_cv(_config, cv_text)
+    except Exception as exc:
+        logger.warning("CV check crashed: %s", type(exc).__name__)
+        verdict = Verdict(False, "check_failed")
+    if not verdict.allowed:
+        logger.info("Rejected CV upload: reason=%s length=%d", verdict.reason, len(cv_text))
+        key = "cv_injection" if verdict.reason == "injection" else verdict.reason
+        return JSONResponse(status_code=400, content={"error": REPLIES[key]})
 
     # Upload starts a fresh CV conversation. The first model call is made only
     # after the user selects a suggested action or asks their own question.
