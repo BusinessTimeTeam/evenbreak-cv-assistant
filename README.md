@@ -8,7 +8,8 @@ A UK-focused CV, employment and disability-inclusion assistant. The stack deploy
 - An **App Platform** service hosting the chat UI, which does its own retrieval
   over a knowledge-base index built into its image.
 - **DigitalOcean serverless inference** for embeddings (Qwen3 Embedding 0.6B) and
-  chat (gpt-oss-20b), called directly with a model access key.
+  chat (gpt-oss-20b, or the model the user picks during the model trial), called
+  directly with a model access key.
 - A **DigitalOcean project** to group the provisioned resources.
 
 ## Architecture
@@ -35,6 +36,37 @@ The query flow works as follows:
 4. The system prompt (`chat-ui/prompts/system.md`), CV, history, passages and
    message are sent to the chat model, and its answer is returned with the
    passages' sources.
+
+## Model trial (temporary)
+
+While we choose the long-term chat model, a select group of users picks the
+model for each conversation on the landing page. The choice locks once the
+conversation starts (a CV upload or "Ask a question"); going back starts a new
+conversation. Only the answer uses the chosen model: the guardrail checks and
+query rewriting stay on gpt-oss-20b, and embeddings on Qwen3 Embedding 0.6B.
+
+A strip under the header shows the model and the conversation's running cost,
+covering every model call (CV check, guardrails, query rewriting, embeddings and
+answers), worked out from each response's token usage and the prices in
+`chat-ui/trial.py`. The model and total are signed into the history token.
+
+Each turn (and each CV upload) logs one line for comparing cost per
+conversation, with token counts by purpose and never any message or CV text:
+
+```
+Turn cost: kind=chat outcome=answered session=qa-… model=deepseek-4-flash reply_in=3481 reply_out=686 guard_in=565 guard_out=131 rewrite_in=167 rewrite_out=280 embed_in=48 turn_usd=0.000903 total_usd=0.000903
+```
+
+The trial models are gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3. Claude Haiku 5.5, GPT-6 Luna,
+Claude Sonnet 5.5 and GPT-6 Sol are commented out in `chat-ui/trial.py` until
+the DigitalOcean account's subscription tier allows them. Check every trial
+model against the API (IDs, access, request settings) with:
+
+```bash
+docker compose --profile tools run --rm evals python /app/check_models.py
+```
+
+To remove the trial, follow the docstring at the top of `chat-ui/trial.py`.
 
 ## Terraform variables
 
@@ -111,8 +143,9 @@ cp .env.example .env
 ```
 
 **2. Create a model access key (one time):** [DO console](https://cloud.digitalocean.com/model-studio/manage-keys)
-→ **Create model access key** → **Select models**: gpt-oss-20b and Qwen3
-Embedding 0.6B → **No VPC network** → copy the secret (it is shown once) into
+→ **Create model access key** → **Select models**: Qwen3 Embedding 0.6B and the
+model-trial models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3; see
+[Model trial](#model-trial-temporary)) → **No VPC network** → copy the secret (it is shown once) into
 `.env` as `MODEL_ACCESS_KEY`.
 
 **3. Run it:**
