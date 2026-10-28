@@ -78,7 +78,7 @@ line (build logs print expanded build args), and never be copied into the
 - Terraform creates a `digitalocean_vpc` in the datacenter App Platform's
   region connects to (the app region is `lon`, so `lon1`), and attaches the app
   to it via the app spec's `vpc` block.
-- The project resources list includes the VPC.
+- The VPC is not added to the DO project: projects don't support VPCs.
 - VPC-attached apps cannot use dedicated egress IPs. The app doesn't use them
   today.
 - DigitalOcean's docs say adding a VPC to an app redeploys it in place, so
