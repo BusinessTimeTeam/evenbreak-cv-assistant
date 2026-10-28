@@ -5,6 +5,13 @@
 # MODEL_ACCESS_KEY is a SECRET the provider cannot read back, so the env always
 # shows as drift and every apply redeploys the app. That is accepted: pushes
 # that change documents redeploy it anyway to rebuild the index.
+# Signs the conversation history the browser holds so it cannot be tampered
+# with. Generated once and kept in state; rotating it invalidates open chats.
+resource "random_password" "history_signing_key" {
+  length  = 64
+  special = false
+}
+
 resource "digitalocean_app" "chat_ui" {
   spec {
     name   = "${local.resource_name}-chat"
@@ -48,6 +55,13 @@ resource "digitalocean_app" "chat_ui" {
         key   = "MODEL_ACCESS_KEY"
         value = var.model_access_key
         scope = "RUN_AND_BUILD_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "HISTORY_SIGNING_KEY"
+        value = random_password.history_signing_key.result
+        scope = "RUN_TIME"
         type  = "SECRET"
       }
     }
