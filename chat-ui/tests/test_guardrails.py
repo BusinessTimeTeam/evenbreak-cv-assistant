@@ -6,7 +6,7 @@ import logging
 import pytest
 
 import guardrails
-from guardrails import ALLOWED, CHECK_HISTORY_TURNS, CV_CHECK_CONCURRENCY, CV_PIECE_CHARS, REPLIES, Verdict, check_cv, check_message
+from guardrails import ALLOWED, CHECK_HISTORY_TURNS, CHECK_MAX_TOKENS, CV_CHECK_CONCURRENCY, CV_PIECE_CHARS, REPLIES, Verdict, check_cv, check_message
 from inference import InferenceConfig, InferenceError
 
 CONFIG = InferenceConfig(api_key="k")
@@ -62,16 +62,46 @@ def test_check_message_parses_json_inside_prose(monkeypatch):
 
 
 def test_check_message_fails_closed_on_error(monkeypatch):
-    _stub_chat(monkeypatch, error=InferenceError("boom"))
+    calls = _stub_chat(monkeypatch, error=InferenceError("boom"))
 
     assert _check() == Verdict(False, "check_failed")
+    assert len(calls) == 2  # one retry, then fail closed
 
 
 @pytest.mark.parametrize("reply", [None, "", "yes", '{"injection": "no"}', '{"off_topic": false}'])
 def test_check_message_fails_closed_on_bad_reply(monkeypatch, reply):
-    _stub_chat(monkeypatch, reply)
+    calls = _stub_chat(monkeypatch, reply)
 
     assert _check() == Verdict(False, "check_failed")
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("first", [InferenceError("boom"), "", "not json", '{"off_topic": false}'])
+def test_check_message_retries_once_after_a_failure(monkeypatch, first):
+    calls = _stub_chat(monkeypatch, [first, '{"injection": false, "off_topic": false}'])
+
+    assert _check() == ALLOWED
+    assert len(calls) == 2
+
+
+def test_check_message_retry_can_still_block(monkeypatch):
+    calls = _stub_chat(monkeypatch, ["", '{"injection": false, "off_topic": true}'])
+
+    assert _check() == Verdict(False, "off_topic")
+    assert len(calls) == 2
+
+
+def test_check_message_retry_is_logged_without_text(monkeypatch, caplog):
+    _stub_chat(monkeypatch, [InferenceError("upstream echoed SECRET-TEXT"), "SECRET-REPLY"])
+
+    with caplog.at_level(logging.WARNING):
+        verdict = _check()
+
+    assert verdict == Verdict(False, "check_failed")
+    assert "retry" in caplog.text.lower()
+    assert "InferenceError" in caplog.text
+    for text in ("SECRET-TEXT", "SECRET-REPLY", MESSAGE):
+        assert text not in caplog.text
 
 
 def test_check_message_sends_recent_history(monkeypatch):
@@ -91,13 +121,13 @@ def test_check_message_sends_recent_history(monkeypatch):
     assert MESSAGE in user_message
 
 
-def test_check_message_uses_temperature_0_and_512_tokens(monkeypatch):
+def test_check_message_uses_temperature_0_and_1024_tokens(monkeypatch):
     calls = _stub_chat(monkeypatch, '{"injection": false, "off_topic": false}')
 
     _check()
 
     assert calls[0]["kwargs"].get("temperature") == 0
-    assert calls[0]["kwargs"].get("max_tokens") == 512
+    assert calls[0]["kwargs"].get("max_tokens") == CHECK_MAX_TOKENS == 1024
 
 
 def test_check_message_does_not_log_message_text(monkeypatch, caplog):
@@ -151,15 +181,47 @@ def test_check_cv_reads_is_cv_only_from_first_piece(monkeypatch):
     assert asyncio.run(check_cv(CONFIG, "x" * (CV_PIECE_CHARS + 10))) == ALLOWED
 
 
-def test_check_cv_fails_closed(monkeypatch):
-    _stub_chat(
-        monkeypatch,
-        ['{"injection": false, "is_cv": true}', InferenceError("boom"), '{"injection": false}'],
-    )
+def _stub_cv_pieces(monkeypatch, reply_for):
+    """Stub guardrails.chat with a reply chosen per CV piece (by its first character)."""
+    calls = []
 
-    verdict = asyncio.run(check_cv(CONFIG, "x" * int(CV_PIECE_CHARS * 2.5)))
+    async def fake_chat(config, messages, **kwargs):
+        piece = messages[1]["content"].split("\n")[1][0]
+        calls.append(piece)
+        reply = reply_for(piece, calls.count(piece))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(guardrails, "chat", fake_chat)
+    return calls
+
+
+THREE_PIECES = "a" * CV_PIECE_CHARS + "b" * CV_PIECE_CHARS + "c" * (CV_PIECE_CHARS // 2)
+
+
+def test_check_cv_fails_closed(monkeypatch):
+    def reply_for(piece, attempt):
+        return InferenceError("boom") if piece == "b" else '{"injection": false, "is_cv": true}'
+
+    calls = _stub_cv_pieces(monkeypatch, reply_for)
+
+    verdict = asyncio.run(check_cv(CONFIG, THREE_PIECES))
 
     assert verdict == Verdict(False, "check_failed")
+    assert sorted(calls) == ["a", "b", "b", "c"]  # only the failing piece is retried, once
+
+
+def test_check_cv_retries_a_failed_piece(monkeypatch):
+    def reply_for(piece, attempt):
+        if piece == "b" and attempt == 1:
+            return ""
+        return '{"injection": false, "is_cv": true}'
+
+    calls = _stub_cv_pieces(monkeypatch, reply_for)
+
+    assert asyncio.run(check_cv(CONFIG, THREE_PIECES)) == ALLOWED
+    assert sorted(calls) == ["a", "b", "b", "c"]
 
 
 def test_check_cv_does_not_log_cv_text(monkeypatch, caplog):

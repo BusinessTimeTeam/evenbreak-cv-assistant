@@ -10,8 +10,8 @@ Two small classifier calls to the chat model guard the app:
 The checks are lenient by design. Wrongly blocking a genuine job-seeker is worse
 than letting a borderline misuse through, so only clear cases are blocked and
 anything ambiguous is allowed. They fail closed, though: if the classifier errors
-or returns something unparseable, the message or upload is refused with
-"check_failed" rather than waved through.
+or returns something unparseable, the call is retried once, and if that fails too
+the message or upload is refused with "check_failed" rather than waved through.
 
 User-supplied text is wrapped in delimiters and the classifier is told to treat
 it as content to classify, never as instructions. Message and CV text is never
@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 CHECK_HISTORY_TURNS = 4
 CV_PIECE_CHARS = 12000
 CV_CHECK_CONCURRENCY = 4
+# gpt-oss reasons before answering, and its reasoning length varies a lot between
+# calls; at 512 tokens it sometimes ran out and returned an empty reply.
+CHECK_MAX_TOKENS = 1024
+# Each classifier call is retried this many times before the check fails closed.
+CHECK_RETRIES = 1
 
 
 @dataclass(frozen=True)
@@ -135,23 +140,34 @@ def _delimit(content: str) -> str:
     return f"<<<BEGIN CONTENT>>>\n{content}\n<<<END CONTENT>>>"
 
 
+async def _classify_once(messages: list[dict], config: InferenceConfig, keys: tuple[str, ...]) -> tuple[dict[str, bool] | None, str]:
+    """One classifier call: (flags, "") on success, (None, why) on failure. `why` never holds user text."""
+    try:
+        reply = await chat(config, messages, temperature=0, max_tokens=CHECK_MAX_TOKENS)
+    except InferenceError as exc:
+        # Not the message: InferenceError text can embed upstream bodies that echo user text.
+        return None, type(exc).__name__
+    flags = _parse_flags(reply, *keys)
+    if flags is None:
+        # Never log the reply: it can echo the user's text.
+        return None, f"unusable reply ({len(reply or '')} chars)"
+    return flags, ""
+
+
 async def _classify(config: InferenceConfig, instruction: str, content: str, *keys: str) -> dict[str, bool] | None:
-    """One classifier call. Returns None (after logging) on any failure."""
+    """A classifier call, retried once on failure. Returns None (after logging) if every attempt fails."""
     messages = [
         {"role": "system", "content": instruction},
         {"role": "user", "content": _delimit(content)},
     ]
-    try:
-        reply = await chat(config, messages, temperature=0, max_tokens=512)
-    except InferenceError as exc:
-        # Not the message: InferenceError text can embed upstream bodies that echo user text.
-        logger.warning("Guardrail check failed: %s", type(exc).__name__)
-        return None
-    flags = _parse_flags(reply, *keys)
-    if flags is None:
-        # Never log the reply: it can echo the user's text.
-        logger.warning("Guardrail check returned an unusable reply (%d chars)", len(reply or ""))
-    return flags
+    for attempt in range(CHECK_RETRIES + 1):
+        flags, why = await _classify_once(messages, config, keys)
+        if flags is not None:
+            return flags
+        if attempt < CHECK_RETRIES:
+            logger.warning("Guardrail check failed (%s); retrying", why)
+    logger.warning("Guardrail check failed (%s); refusing", why)
+    return None
 
 
 async def check_message(config: InferenceConfig, message: str, history: list[dict]) -> Verdict:
