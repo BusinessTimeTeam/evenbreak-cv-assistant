@@ -1,45 +1,70 @@
-"""RAG Assistant Chat UI — a lightweight FastAPI app that proxies chat
-messages to a DigitalOcean managed GenAI agent and serves a simple web
-interface.
+"""RAG Assistant Chat UI — a lightweight FastAPI app that answers chat messages
+using Evenbreak's knowledge base and DigitalOcean serverless inference, and
+serves a simple web interface.
 
-The agent endpoint and API key are supplied directly via the environment; the
-app never calls the DO API to discover the endpoint or mint a key.
+Each chat turn: rewrite the conversation into search queries, embed them,
+search the in-memory knowledge-base index, then send the system prompt, CV,
+retrieved passages, history and message to the chat model.
 
 Environment variables (injected by terraform via App Platform, or from .env
 locally):
-    AGENT_ENDPOINT — OpenAI-compatible chat endpoint of the agent (required)
-    AGENT_API_KEY  — Secret API key for the agent (required)
+    MODEL_ACCESS_KEY   — DO model access key for serverless inference (required)
+    INFERENCE_BASE_URL — default https://inference.do-ai.run/v1
+    CHAT_MODEL         — default openai-gpt-oss-20b
+    EMBEDDING_MODEL    — default qwen3-embedding-0.6b; must match the index
+    INDEX_PATH         — built index file, default /index/kb_index.npz
+    RETRIEVAL_K        — passages retrieved per turn, default 10
 """
 
 import logging
 import os
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from extraction import extract_text
+from inference import InferenceConfig, InferenceError, chat, embed
+from prompting import build_messages, load_system_prompt, rewrite_queries
+from retrieval import Index, ScoredChunk
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger("chat-ui")
 
-app = FastAPI(title="RAG Assistant")
+_config = InferenceConfig.from_env()
+SYSTEM_PROMPT = load_system_prompt()
+RETRIEVAL_K = int(os.environ.get("RETRIEVAL_K", "10"))
+DEFAULT_INDEX_PATH = "/index/kb_index.npz"
+
+# Loaded once at startup (see lifespan); read-only afterwards.
+_index: Index | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _index
+    path = Path(os.environ.get("INDEX_PATH", DEFAULT_INDEX_PATH))
+    # Raises IndexLoadError (missing / unreadable / wrong embedding model),
+    # which aborts startup with a message saying how to rebuild the index.
+    _index = Index.load(path, expected_embedding_model=_config.embedding_model)
+    logger.info("Loaded knowledge-base index: %d chunks from %s", len(_index), path)
+    yield
+
+
+app = FastAPI(title="RAG Assistant", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-AGENT_ENDPOINT = os.environ["AGENT_ENDPOINT"]
-AGENT_API_KEY = os.environ["AGENT_API_KEY"]
 
 INDEX_HTML_PATH = STATIC_DIR / "index.html"
 
 # Uploaded CVs are kept server-side keyed by a session id, so the browser only
 # has to hold the session id and the Q&A turns — not the full CV text. The CV is
-# re-injected as a stable leading message on every agent call (the agent is
+# re-injected as a stable leading message on every model call (the model is
 # stateless and has no memory of its own).
 #
 # NOTE: this is an in-process dict. It is fine for the current single-instance
@@ -51,9 +76,8 @@ _cv_sessions: dict[str, dict] = {}
 def _cv_message(cv: dict) -> dict:
     """Build the stable leading message that carries an uploaded CV.
 
-    Uses the ``user`` role, not ``system``: the DO managed agent rejects
-    client-supplied system/developer messages ("agent instructions are set via
-    agent configuration", HTTP 400). Agent instructions live in the agent config.
+    Uses the ``user`` role: the system message carries only the assistant's
+    instructions (prompts/system.md), and the CV is user-supplied content.
     """
     return {
         "role": "user",
@@ -76,56 +100,50 @@ async def health():
     return {"status": "ok"}
 
 
-async def _call_agent(messages):
-    """Send an OpenAI-compatible chat request to the managed agent and return
-    the assistant's reply text."""
-    headers = {
-        "Authorization": f"Bearer {AGENT_API_KEY}",
-        "Content-Type": "application/json",
-    }
+async def _answer(
+    message: str, history: list[dict], cv: dict | None
+) -> tuple[str, list[ScoredChunk]]:
+    """Retrieve knowledge-base passages for this turn and ask the chat model.
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            AGENT_ENDPOINT, json={"messages": messages}, headers=headers
-        )
-
-    try:
-        data = resp.json()
-    except Exception:
-        return f"Error: agent returned {resp.status_code}: {resp.text[:500]}"
-
-    if "choices" in data and len(data["choices"]) > 0:
-        return data["choices"][0].get("message", {}).get("content", "")
-    if "detail" in data:
-        return f"Error: {data['detail']}"
-    return ""
+    Raises InferenceError if embedding or the chat call fails; query rewriting
+    falls back to the raw message on its own.
+    """
+    queries = await rewrite_queries(_config, message, history, cv["text"] if cv else None)
+    passages = _index.search(await embed(_config, queries), k=RETRIEVAL_K)
+    messages = build_messages(
+        SYSTEM_PROMPT, _cv_message(cv) if cv else None, passages, history, message
+    )
+    return await chat(_config, messages), passages
 
 
 @app.post("/api/chat")
-async def chat(request: Request):
-    """Proxy a chat message to the managed agent and return the response.
+async def chat_endpoint(request: Request):
+    """Answer a chat message from the knowledge base and return the reply.
 
-    If the request carries a session id with a stored CV, that CV is prepended
-    as a stable leading message so the agent can reason about it on every turn.
+    If the request carries a session id with a stored CV, that CV is included
+    on every turn so the model can reason about it. ``sources`` lists the
+    retrieved knowledge-base files (the UI ignores it; the comparison uses it).
     """
     body = await request.json()
     message = body.get("message", "")
-    history = body.get("history", [])
+    history = [
+        {"role": h.get("role", "user"), "content": h.get("content", "")}
+        for h in body.get("history", [])
+    ]
     session_id = body.get("session_id")
-
-    # Build OpenAI-compatible messages array, CV (if any) first.
-    messages = []
     cv = _cv_sessions.get(session_id) if session_id else None
-    if cv:
-        messages.append(_cv_message(cv))
-    for h in history:
-        messages.append(
-            {"role": h.get("role", "user"), "content": h.get("content", "")}
-        )
-    messages.append({"role": "user", "content": message})
 
-    content = await _call_agent(messages)
-    return JSONResponse(content={"content": content})
+    try:
+        content, passages = await _answer(message, history, cv)
+    except InferenceError as exc:
+        logger.warning("Chat turn failed: %s", exc)
+        return JSONResponse(content={"content": f"Error: {exc}", "sources": []})
+    return JSONResponse(
+        content={
+            "content": content,
+            "sources": [{"source": p.source, "score": p.score} for p in passages],
+        }
+    )
 
 
 @app.post("/api/upload")

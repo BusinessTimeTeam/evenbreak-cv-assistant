@@ -1,8 +1,8 @@
 """Tests for the /api/upload endpoint and CV-aware /api/chat.
 
-Uploaded CVs are stored server-side keyed by a session id and injected as a
-stable leading message on each agent call. The agent call is stubbed so these
-tests stay offline.
+Uploaded CVs are stored server-side keyed by a session id and handed to the
+answer pipeline on every chat turn. The pipeline (``main._answer``) is stubbed
+so these tests stay offline; test_chat_pipeline.py covers the pipeline itself.
 """
 
 import io
@@ -11,9 +11,8 @@ import os
 import pytest
 from docx import Document
 
-# main reads these at import time; set before importing it.
-os.environ.setdefault("AGENT_ENDPOINT", "https://agent.example/api/v1/chat/completions")
-os.environ.setdefault("AGENT_API_KEY", "sk-test")
+# main reads this at import time; set before importing it.
+os.environ.setdefault("MODEL_ACCESS_KEY", "sk-test")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -24,12 +23,12 @@ import main  # noqa: E402
 def client(monkeypatch):
     captured = {"calls": 0}
 
-    async def fake_call_agent(messages):
+    async def fake_answer(message, history, cv):
         captured["calls"] += 1
-        captured["messages"] = messages
-        return "stubbed agent reply"
+        captured.update(message=message, history=history, cv=cv)
+        return "stubbed answer", []
 
-    monkeypatch.setattr(main, "_call_agent", fake_call_agent)
+    monkeypatch.setattr(main, "_answer", fake_answer)
     # Start each test with an empty session store.
     main._cv_sessions.clear()
     test_client = TestClient(main.app)
@@ -55,15 +54,14 @@ def _upload(client, *paragraphs, filename="cv.docx"):
 
 
 def test_cv_message_uses_user_role_not_system():
-    # The DO managed agent rejects client-supplied system/developer messages
-    # ("agent instructions are set via agent configuration", HTTP 400), so the
-    # CV must ride along as a user message.
+    # The system message carries only the assistant's instructions; the CV is
+    # user-supplied content, so it rides along as a user message.
     msg = main._cv_message({"filename": "cv.pdf", "text": "Ada Lovelace"})
     assert msg["role"] == "user"
     assert "Ada Lovelace" in msg["content"]
 
 
-def test_upload_extracts_and_stores_cv_without_calling_agent(client):
+def test_upload_extracts_and_stores_cv_without_answering(client):
     resp = _upload(client, "Ada Lovelace", "Mathematician")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ready"
@@ -88,7 +86,7 @@ def test_upload_rejects_unsupported_file_type(client):
     assert "Unsupported" in resp.json()["error"]
 
 
-def test_chat_injects_stored_cv_as_leading_message(client):
+def test_chat_passes_stored_cv_to_the_pipeline(client):
     session_id = _upload(client, "Marie Curie", "Physicist").json()["session_id"]
 
     resp = client.post(
@@ -96,23 +94,24 @@ def test_chat_injects_stored_cv_as_leading_message(client):
         json={"message": "What field are they in?", "session_id": session_id, "history": []},
     )
     assert resp.status_code == 200
+    assert resp.json()["content"] == "stubbed answer"
 
-    messages = client.captured["messages"]
-    # CV is the stable leading message; the live question is last.
-    assert "Marie Curie" in messages[0]["content"]
-    assert messages[-1]["content"] == "What field are they in?"
+    assert "Marie Curie" in client.captured["cv"]["text"]
+    assert client.captured["message"] == "What field are they in?"
 
 
-def test_chat_without_session_sends_no_cv_prefix(client):
+def test_chat_without_session_sends_no_cv(client):
     resp = client.post("/api/chat", json={"message": "hello", "history": []})
     assert resp.status_code == 200
-    assert client.captured["messages"] == [{"role": "user", "content": "hello"}]
+    assert client.captured["cv"] is None
+    assert client.captured["message"] == "hello"
+    assert client.captured["history"] == []
 
 
-def test_chat_with_unknown_session_sends_no_cv_prefix(client):
+def test_chat_with_unknown_session_sends_no_cv(client):
     resp = client.post(
         "/api/chat",
         json={"message": "hello", "session_id": "does-not-exist", "history": []},
     )
     assert resp.status_code == 200
-    assert client.captured["messages"] == [{"role": "user", "content": "hello"}]
+    assert client.captured["cv"] is None
