@@ -1,0 +1,95 @@
+[
+  {
+    "id": "adjustments-interview",
+    "cv": null,
+    "turns": ["I'm autistic and I have an interview next week. What adjustments could I ask for, and how do I ask?"],
+    "notes": "Workplace adjustments (course 39-42, guide 19-workplace-adjustments) and neurodivergence (course 15-18). Good answer: concrete examples (questions in advance, quiet room, extra time, clear instructions) and how/when to request them."
+  },
+  {
+    "id": "disclose-dyslexia-cv",
+    "cv": "cv-graduate.md",
+    "turns": ["I'm dyslexic. Should I mention it on my CV?"],
+    "notes": "Self-advocacy and disclosure (course 43-46, guide 12-self-advocacy). Good answer: it's the candidate's choice, pros and cons, alternatives (cover letter, application form, at interview), referring to the CV."
+  },
+  {
+    "id": "gap-long-term-illness",
+    "cv": "cv-employment-gap.md",
+    "turns": ["How should I explain the gap in my CV? It was because of a long-term illness."],
+    "notes": "Chronic health (course 27-30, guide 13-supporting-chronic-he). Good answer: spots the 2021-2023 gap on the CV, brief honest framing, no obligation to give medical detail, suggested wording."
+  },
+  {
+    "id": "adhd-strengths-statement",
+    "cv": "cv-career-changer.md",
+    "turns": ["I have ADHD. How can I show it as a strength in my personal statement without oversharing?"],
+    "notes": "Neurodiverse profiles (course 17, guide 01-common-neurodiversity). Good answer: strengths-based framing tied to the actual retail-management experience, optional disclosure, rewritten statement."
+  },
+  {
+    "id": "identity-first-language",
+    "cv": null,
+    "turns": ["In my cover letter, should I say 'disabled person' or 'person with a disability' about myself?"],
+    "notes": "Inclusive language (course 11-14, guide 08-inclusive-communication) and the social model. Good answer: explains both conventions, UK social-model preference for 'disabled person', and that it's the person's own choice."
+  },
+  {
+    "id": "access-to-work",
+    "cv": null,
+    "turns": ["What is Access to Work and can it help me when I start a new job?"],
+    "notes": "Access to Work appears in guide 19-workplace-adjustments and course 06. Good answer: UK government scheme, what it can fund, applying before or soon after starting, GOV.UK pointer."
+  },
+  {
+    "id": "social-model-employer",
+    "cv": null,
+    "turns": ["What does the social model of disability mean, and how could it help me talk to an employer about what I need?"],
+    "notes": "Models of disability (course 07-10, guide 16-the-social-model). Good answer: barriers vs impairment, reframing requests as removing barriers."
+  },
+  {
+    "id": "hard-of-hearing-video-interview",
+    "cv": null,
+    "turns": ["I'm hard of hearing. How can I prepare for a video interview?"],
+    "notes": "Deaf identity and support (course 19-22, guide 05-deaf-inclusion). Good answer: captions, lipreading-friendly setup, asking for questions in writing or a BSL interpreter, testing the tech."
+  },
+  {
+    "id": "returning-after-depression",
+    "cv": "cv-employment-gap.md",
+    "turns": ["I'm going back to work after time off with depression. How do I talk about it at interview if they ask about the gap?"],
+    "notes": "Mental health and wellbeing (course 35-38, guide 15-supporting-mental-wel). Good answer: what to share is the candidate's choice, short forward-looking explanation, sample wording, Equality Act protection where relevant."
+  },
+  {
+    "id": "adjustments-not-in-place",
+    "cv": null,
+    "turns": ["I started a new job a month ago and the adjustments we agreed still haven't been put in place. What should I do?"],
+    "notes": "Requesting adjustments and self-advocacy (course 41, 43-46). Good answer: put it in writing, who to talk to, keep records, duty to make reasonable adjustments (Equality Act 2010), ACAS for advice."
+  },
+  {
+    "id": "northern-ireland-law",
+    "cv": null,
+    "turns": ["I live in Belfast. What law protects me from disability discrimination at work?"],
+    "notes": "Not covered by the knowledge base: tests the system prompt. Good answer: Disability Discrimination Act 1995 (Northern Ireland), explains it differs from the Equality Act 2010 in GB; no US/ADA content."
+  },
+  {
+    "id": "statement-then-rewrite",
+    "cv": "cv-career-changer.md",
+    "turns": [
+      "Can you review my personal statement?",
+      "Now rewrite it so it suits a project coordinator role."
+    ],
+    "notes": "Multi-turn: the second turn only makes sense with history (rewrite 'it'). Good answer: turn 2 rewrites the actual statement, drawing out transferable skills (refit project, rotas, budgets, reporting)."
+  },
+  {
+    "id": "leadership-then-bullets",
+    "cv": "cv-employment-gap.md",
+    "turns": [
+      "Which of my jobs best shows leadership?",
+      "Rewrite the bullet points for that job to make the leadership clearer."
+    ],
+    "notes": "Multi-turn: 'that job' must resolve from turn 1 (likely the Senior Administrator role). Good answer: turn 2 rewrites those specific bullets with outcomes."
+  },
+  {
+    "id": "stammer-then-email",
+    "cv": "cv-graduate.md",
+    "turns": [
+      "I have a stammer. Should I tell employers before a phone interview?",
+      "What exactly could I say in that email?"
+    ],
+    "notes": "Diverse speech (course 31-34, guide 14-supporting-diverse-sp). Multi-turn: turn 2 needs turn 1's context. Good answer: optional disclosure, adjustments like extra time or a video/in-person alternative, a short sample email."
+  }
+]
