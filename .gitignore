@@ -32,3 +32,6 @@ scratch.txt
 
 # Superpowers plan workspaces (ledgers, briefs)
 .superpowers/
+
+# Locally built knowledge-base index (never committed)
+.index/
