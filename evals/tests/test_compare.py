@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
 import compare
 
@@ -31,7 +32,16 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
     def handler(request):
         if request.url.path == "/api/upload":
             calls["upload"] += 1
-            return httpx.Response(200, json={"session_id": "s-1", "status": "ready"})
+            return httpx.Response(
+                200,
+                json={
+                    "session_id": "s-1",
+                    "status": "ready",
+                    "history_token": "token-0",
+                    "model": "m-1",
+                    "total_microusd": 5,
+                },
+            )
         body = json.loads(request.content)
         calls["chat"].append(body)
         done = {
@@ -41,6 +51,9 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
             "sources": [{"source": "a.md", "score": 0.9}],
             "history": [{"role": "user", "content": "echo"}],
             "history_token": f"token-{len(calls['chat'])}",
+            "session_id": "s-1",
+            "model": "m-1",
+            "total_microusd": 5 + 10 * len(calls["chat"]),
         }
         return _ndjson({"type": "answer", "text": "partial"}, done)
 
@@ -49,9 +62,12 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
 
     assert calls["upload"] == 1
     assert [c["session_id"] for c in calls["chat"]] == ["s-1", "s-1"]
-    assert calls["chat"][0]["history"] == [] and calls["chat"][0]["history_token"] is None
+    # The upload's state starts the conversation; each reply's state continues it.
+    assert calls["chat"][0]["history"] == [] and calls["chat"][0]["history_token"] == "token-0"
+    assert calls["chat"][0]["model"] == "m-1" and calls["chat"][0]["total_microusd"] == 5
     assert calls["chat"][1]["history"] == [{"role": "user", "content": "echo"}]
     assert calls["chat"][1]["history_token"] == "token-1"
+    assert calls["chat"][1]["model"] == "m-1" and calls["chat"][1]["total_microusd"] == 15
     assert result[1] == {"turn": "Follow-up about that?", "answer": "new 2", "sources": ["a.md"]}
 
 
@@ -64,7 +80,15 @@ def test_run_new_records_error_event(tmp_path):
         chat.append(json.loads(request.content))
         return _ndjson(
             {"type": "status", "text": "Thinking"},
-            {"type": "error", "error": "boom", "history": [], "history_token": f"err-{len(chat)}"},
+            {
+                "type": "error",
+                "error": "boom",
+                "history": [],
+                "history_token": f"err-{len(chat)}",
+                "session_id": "s-1",
+                "model": "m-1",
+                "total_microusd": 7,
+            },
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
@@ -73,6 +97,52 @@ def test_run_new_records_error_event(tmp_path):
     assert result[0] == {"turn": "First question?", "answer": "Error: boom", "sources": []}
     assert result[0]["answer"].startswith("Error: ")
     assert chat[1]["history_token"] == "err-1"
+    assert chat[1]["total_microusd"] == 7
+
+
+def test_run_new_qa_case_starts_without_state_then_sends_it_back(tmp_path):
+    chat = []
+
+    def handler(request):
+        chat.append(json.loads(request.content))
+        return _ndjson(
+            {
+                "type": "done",
+                "content": "ok",
+                "blocked": None,
+                "sources": [],
+                "history": [],
+                "history_token": "t",
+                "session_id": "qa-1",
+                "model": "m-1",
+                "total_microusd": 3,
+            }
+        )
+
+    case = {**CASE, "cv": None}
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
+    asyncio.run(compare.run_new(case, tmp_path, "http://app", client=client))
+
+    assert chat[0]["session_id"] is None and chat[0]["history_token"] is None
+    assert chat[1] == {
+        "message": "Follow-up about that?",
+        "history": [],
+        "history_token": "t",
+        "session_id": "qa-1",
+        "model": "m-1",
+        "total_microusd": 3,
+    }
+
+
+def test_run_new_raises_clearly_when_the_stream_has_no_final_event(tmp_path):
+    def handler(request):
+        if request.url.path == "/api/upload":
+            return httpx.Response(200, json={"session_id": "s-1", "status": "ready"})
+        return _ndjson({"type": "answer", "text": "partial"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
+    with pytest.raises(RuntimeError, match="without a final event"):
+        asyncio.run(compare.run_new(CASE, _cvs(tmp_path), "http://app", client=client))
 
 
 def test_render_report_shows_both_answers_and_sources_per_turn():

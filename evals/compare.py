@@ -46,34 +46,39 @@ def _docx(text: str) -> bytes:
     return buffer.getvalue()
 
 
+STATE_KEYS = ("history", "history_token", "session_id", "model", "total_microusd")
+
+
+def _state(body: dict) -> dict:
+    """The conversation state in an upload response or a final chat event."""
+    return {k: body[k] for k in STATE_KEYS if k in body}
+
+
 async def run_new(
     case: dict, cvs_dir: Path, base_url: str, *, client: httpx.AsyncClient | None = None
 ) -> list[dict]:
     cv_text = _cv_text(case, cvs_dir)
-    history, history_token, results = [], None, []
+    # The conversation state the server signs; sent back unchanged each turn.
+    state = {"history": [], "history_token": None, "session_id": None}
+    results = []
     async with client or httpx.AsyncClient(base_url=base_url, timeout=TIMEOUT) as http:
-        session_id = None
         if cv_text:
             filename = Path(case["cv"]).with_suffix(".docx").name
             resp = await http.post("/api/upload", files={"file": (filename, _docx(cv_text))})
             resp.raise_for_status()
-            session_id = resp.json()["session_id"]
+            state.update(_state(resp.json()))
         for turn in case["turns"]:
-            payload = {
-                "message": turn,
-                "history": history,
-                "history_token": history_token,
-                "session_id": session_id,
-            }
             # The reply streams as newline-delimited JSON; the last event is
             # the final `done` or `error`, so keep only that one.
             body = {}
-            async with http.stream("POST", "/api/chat", json=payload) as resp:
+            async with http.stream("POST", "/api/chat", json={"message": turn, **state}) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if line.strip():
                         body = json.loads(line)
-            if body.get("type") == "error":
+            if body.get("type") not in ("done", "error"):
+                raise RuntimeError(f"case {case['id']}: chat stream ended without a final event")
+            if body["type"] == "error":
                 results.append({"turn": turn, "answer": "Error: " + body["error"], "sources": []})
             else:
                 results.append(
@@ -83,8 +88,7 @@ async def run_new(
                         "sources": [s["source"] for s in body.get("sources", [])],
                     }
                 )
-            # The server signs the history it returns; send it back unchanged.
-            history, history_token = body["history"], body["history_token"]
+            state.update(_state(body))
     return results
 
 
