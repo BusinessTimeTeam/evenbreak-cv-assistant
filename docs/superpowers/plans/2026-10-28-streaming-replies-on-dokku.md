@@ -564,16 +564,44 @@ git commit -m "feat: Deploy to Dokku on every push to main and after each Terraf
 
 No code. Each step needs the user or their credentials.
 
-- [ ] **Step 1:** Ask the user for the Let's Encrypt email and the admin SSH public keys, and put them in `deploy/terraform.tfvars`.
-- [ ] **Step 2:** Run `cd deploy && source env.sh && terraform apply`. Expected: the Task 7 resources are created, and `terraform output reserved_ip` prints an address.
-- [ ] **Step 3:** The user adds an A record for `evenbreak-cv.businesstime.team` pointing at the reserved IP, and the GitHub secrets and variable from `terraform output` (`-raw dokku_deploy_private_key`, `dokku_ssh_known_hosts`, `reserved_ip`).
-- [ ] **Step 4:** Run the deploy with `gh workflow run deploy.yml --ref <branch>` (or after merging). Expected: the run succeeds. Search its log for the first 8 characters of `MODEL_ACCESS_KEY` and expect no matches (Review Focus 2).
-- [ ] **Step 5:** After DNS resolves (`dig +short evenbreak-cv.businesstime.team`), re-run the deploy. Expected: `https://evenbreak-cv.businesstime.team/health` returns `{"status":"ok"}` with a valid certificate.
-- [ ] **Step 6:** On the real domain, repeat Task 5's browser checks 1–5, plus:
+The droplet is brought up and checked from the branch, before anything is merged. Two things rule out doing it through CI first:
+
+- `gh workflow run deploy.yml --ref <branch>` can't work. GitHub only dispatches a workflow that exists on the default branch, and deploy.yml's job guard (`if: github.ref == 'refs/heads/main'`) would skip a branch run anyway.
+- Merging to `main` also redeploys App Platform (`deploy_on_push`), with streaming and the 32k reply limit, which App Platform can't carry. So merging starts the clock on Task 10.
+
+Hazards of the local apply:
+
+- **The model access key must match CI.** `deploy/env.sh` must export `TF_VAR_model_access_key` set to exactly the value of the GitHub `MODEL_ACCESS_KEY` secret. Without it, `terraform apply` prompts for the key. With a different value, the first CI apply after the merge renders different `user_data` and replaces the droplet.
+- **No state locking.** The Spaces backend has no locking, so a local apply must never overlap a CI apply. Check that no Terraform Apply run is in progress (`gh run list --workflow terraform-apply.yml --limit 3`) before applying, and don't merge or push to `main` until the local apply has finished.
+
+Steps:
+
+- [ ] **Step 1:** Ask the user for the Let's Encrypt email and the admin SSH public keys, and put them in `deploy/terraform.tfvars`. Commit the change on the branch (CI reads this file; without it, the first CI apply fails).
+- [ ] **Step 2:** The user confirms that `deploy/env.sh` exports `TF_VAR_model_access_key` with the same value as the `MODEL_ACCESS_KEY` GitHub secret (see `deploy/env.sh.example`). Don't read or print `env.sh`.
+- [ ] **Step 3:** Check that no CI apply is running, then run `cd deploy && source env.sh && terraform init && terraform apply`. Expected: the Task 7 resources are created, the App Platform app is unchanged, and `terraform output reserved_ip` prints an address.
+- [ ] **Step 4:** The user adds an A record for `evenbreak-cv.businesstime.team` pointing at the reserved IP, and the GitHub secrets and variable from `terraform output` (`-raw dokku_deploy_private_key`, `dokku_ssh_known_hosts`, `reserved_ip`).
+- [ ] **Step 5:** Wait for cloud-init to finish: `ssh root@<reserved_ip> cloud-init status --wait` (expected: `status: done`). If it fails, see the README's troubleshooting section.
+- [ ] **Step 6:** Deploy the branch by hand with the deploy key. Write the key to a temporary file with mode 0600, never printing it, push, then delete the file:
+
+  ```bash
+  cd deploy
+  keyfile=$(mktemp) && chmod 600 "$keyfile"
+  terraform output -raw dokku_deploy_private_key > "$keyfile"
+  ip=$(terraform output -raw reserved_ip)
+  terraform output -raw dokku_ssh_known_hosts > "$keyfile.known_hosts"
+  GIT_SSH_COMMAND="ssh -i $keyfile -o IdentitiesOnly=yes -o UserKnownHostsFile=$keyfile.known_hosts" \
+    git push "dokku@$ip:chat-ui" streaming-on-dokku:main
+  rm -f "$keyfile" "$keyfile.known_hosts"
+  ```
+
+  Expected: the push builds and starts the app. Search the push output for the first 8 characters of the model access key and expect no matches (Review Focus 2).
+- [ ] **Step 7:** After DNS resolves (`dig +short evenbreak-cv.businesstime.team`), enable HTTPS: `ssh root@<reserved_ip> dokku letsencrypt:enable chat-ui`. Expected: `https://evenbreak-cv.businesstime.team/health` returns `{"status":"ok"}` with a valid certificate.
+- [ ] **Step 8:** On the real domain, repeat Task 5's browser checks 1–5, plus:
   - a Kimi K3 CV rewrite that takes more than 100s completes without an error
   - uploading a 2–5MB PDF CV works (Review Focus 1)
   - `curl -N` against `/api/chat` shows events arriving every few seconds, not all at the end. Interrupting it with Ctrl-C logs `outcome=abandoned` (`ssh root@<ip> dokku logs chat-ui`, Review Focus 3).
-- [ ] **Step 7:** Ask the user to confirm the droplet is good before Task 10.
+- [ ] **Step 9:** Ask the user to confirm the droplet is good. Only then merge to `main`. Expected: the Terraform Apply run makes no changes to the droplet (if its plan shows the droplet being replaced, the model access keys differ), and the Deploy run it triggers succeeds. Search the Deploy run's log for the first 8 characters of `MODEL_ACCESS_KEY` and expect no matches.
+- [ ] **Step 10:** Do Task 10 straight away: the merge has redeployed App Platform with a build it can't run properly.
 
 ### Task 10: Remove App Platform (after the user confirms)
 

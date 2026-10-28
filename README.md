@@ -102,8 +102,18 @@ it fails until the domain's A record points at the reserved IP.
 ### Setting up a new server
 
 1. In `deploy/terraform.tfvars`, set `letsencrypt_email` and
-   `admin_ssh_public_keys` (your own SSH public keys, for logging in as root).
-2. Run `terraform apply` in `deploy/` (or merge to `main` and let CI apply it).
+   `admin_ssh_public_keys` (your own SSH public keys, for logging in as root),
+   and commit it: CI reads this file, so a CI apply fails without them.
+2. Run `terraform apply` in `deploy/`, or merge to `main` and let CI apply it.
+   Merging to `main` also redeploys the App Platform app until it's removed.
+   Before a local apply:
+   - `deploy/env.sh` must export `TF_VAR_model_access_key` with exactly the
+     value of the `MODEL_ACCESS_KEY` GitHub secret. Without it, Terraform
+     prompts for the key. With a different value, the next CI apply renders
+     different `user_data` and replaces the droplet.
+   - Check that no Terraform Apply run is in progress, and don't push to `main`
+     until the local apply has finished. The Spaces state backend has no
+     locking, so overlapping applies can corrupt the state.
 3. At the domain's DNS host, add an A record for
    `evenbreak-cv.businesstime.team` pointing at `terraform output -raw reserved_ip`.
    This is needed once: the reserved IP survives droplet rebuilds.
@@ -116,7 +126,34 @@ it fails until the domain's A record points at the reserved IP.
    | `DOKKU_HOST` | variable | `terraform output -raw reserved_ip` |
 
 5. Run the **Deploy** workflow from the Actions tab. It waits for the droplet to
-   finish setting up, deploys, and enables HTTPS.
+   finish setting up, deploys, and enables HTTPS. A wrong `DOKKU_KNOWN_HOSTS`
+   or deploy key looks the same as a droplet that is still setting up, so it
+   only fails after the 20-minute readiness wait.
+
+### If the first boot fails
+
+If deploys keep waiting, or the app never appears, check the first-boot setup
+over SSH (as root, with one of the `admin_ssh_public_keys`):
+
+```bash
+ssh root@<reserved_ip> cloud-init status --long
+ssh root@<reserved_ip> tail -n 100 /var/log/cloud-init-output.log
+```
+
+The setup runs only once per droplet, so after fixing the cause, rebuild the
+droplet rather than re-running it:
+
+```bash
+cd deploy && source env.sh && terraform apply -replace=digitalocean_droplet.chat
+```
+
+### Security note
+
+The droplet's `user_data` holds the app's secrets and the SSH host private
+key. Anything running on the droplet, including the app's container, can read
+it from the DigitalOcean metadata endpoint (`http://169.254.169.254`). The
+setup script deletes its own copy of the secrets, but the metadata endpoint
+keeps them for the droplet's lifetime. That is accepted for the MVP.
 
 ## GitHub Actions secrets and variables
 
