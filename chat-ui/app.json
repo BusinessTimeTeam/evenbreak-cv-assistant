@@ -1,0 +1,14 @@
+{
+  "healthchecks": {
+    "web": [
+      {
+        "type": "startup",
+        "name": "health",
+        "description": "Checking the app answers GET /health before switching traffic to it",
+        "path": "/health",
+        "port": 8080,
+        "attempts": 5
+      }
+    ]
+  }
+}

@@ -74,5 +74,55 @@ variable "_app_source_branch" {
 variable "model_access_key" {
   type        = string
   sensitive   = true
-  description = "DO model access key the chat UI uses for serverless inference (embedding the knowledge base at build time, and chat at run time). Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
+  description = "DO model access key the chat UI uses for serverless inference (embedding the knowledge base at build time, and chat at run time), on App Platform and the Dokku droplet. Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
+}
+
+// =============================================================================
+// DOKKU DROPLET CONFIGURATION
+// =============================================================================
+
+variable "domain" {
+  type        = string
+  default     = "evenbreak-cv.businesstime.team"
+  description = "Public domain the chat UI is served on from the Dokku droplet. Its DNS is not on DigitalOcean: add an A record pointing at the reserved_ip output by hand, once."
+}
+
+variable "letsencrypt_email" {
+  type        = string
+  description = "Contact email Let's Encrypt uses for certificate expiry and account notices. No default: set it in terraform.tfvars before the first apply."
+}
+
+variable "admin_ssh_public_keys" {
+  type        = list(string)
+  description = "OpenSSH public keys (one per entry) allowed to log in to the droplet as root, for administration. No default: set them in terraform.tfvars before the first apply."
+}
+
+variable "droplet_region" {
+  type        = string
+  default     = "lon1"
+  description = "DigitalOcean region slug for the Dokku droplet and its reserved IP."
+}
+
+variable "droplet_size" {
+  type        = string
+  default     = "s-1vcpu-2gb"
+  description = "Droplet size slug. 2GB RAM, because Dokku builds the image (including the knowledge-base index) on the droplet."
+}
+
+variable "droplet_image" {
+  type        = string
+  default     = "ubuntu-24-04-x64"
+  description = "Droplet image slug. Ubuntu 24.04 LTS: Dokku supports 22.04/24.04/26.04, but its v0.38.32 bootstrap.sh only has packages for jammy and noble (checked 2026-10-28)."
+}
+
+variable "dokku_version" {
+  type        = string
+  default     = "v0.38.32"
+  description = "Dokku release tag installed by cloud-init. Latest stable as of 2026-10-28 (released 2026-10-25)."
+}
+
+variable "dokku_letsencrypt_version" {
+  type        = string
+  default     = "0.25.2"
+  description = "dokku-letsencrypt plugin git tag installed by cloud-init. Latest release as of 2026-10-28 (released 2026-08-28)."
 }

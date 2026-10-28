@@ -1,0 +1,142 @@
+#cloud-config
+# First-boot setup of the Dokku droplet, rendered by Terraform (droplet.tf).
+# Any change to the rendered output replaces the droplet; the server is
+# disposable and the next deploy repopulates it.
+#
+# Every templated value goes through jsonencode(): a JSON string is a valid
+# YAML string, so keys and secrets need no hand-escaping.
+#
+# Secrets reach Dokku only through /root/dokku-setup.env (mode 0600, base64
+# encoded values), which the setup script reads and deletes when it exits.
+# The script never runs with `set -x`, so no value lands in
+# /var/log/cloud-init-output.log.
+#
+# runcmd runs once per instance (not on reboot), and the secrets file is gone
+# after the first run, so the setup script is written to run exactly once.
+
+# -----------------------------------------------------------------------------
+# SSH: a stable host key from Terraform, admin keys for root, no passwords
+# -----------------------------------------------------------------------------
+ssh_deletekeys: true
+ssh_genkeytypes: []
+ssh_keys:
+  ed25519_private: ${jsonencode(host_private_key)}
+  ed25519_public: ${jsonencode(host_public_key)}
+disable_root: false
+ssh_pwauth: false
+ssh_authorized_keys:
+%{ for key in admin_ssh_public_keys ~}
+  - ${jsonencode(key)}
+%{ endfor ~}
+
+# -----------------------------------------------------------------------------
+# Patching: unattended security upgrades, rebooting at night when needed
+# -----------------------------------------------------------------------------
+packages:
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/apt/apt.conf.d/52unattended-reboot
+    permissions: "0644"
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+
+  # Turn on the daily package-list refresh and unattended upgrade (Ubuntu's
+  # 20auto-upgrades usually does this; a later file makes sure of it).
+  - path: /etc/apt/apt.conf.d/21auto-upgrades-enable
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  # On first boot apt-daily/unattended-upgrades may hold the dpkg lock while
+  # the Dokku installer runs apt-get; wait for it instead of failing.
+  - path: /etc/apt/apt.conf.d/51dpkg-lock-timeout
+    permissions: "0644"
+    content: |
+      DPkg::Lock::Timeout "600";
+
+  # Root-only secrets for the setup script. Deleted when the script exits.
+  - path: /root/dokku-setup.env
+    owner: root:root
+    permissions: "0600"
+    content: |
+      MODEL_ACCESS_KEY_B64=${base64encode(model_access_key)}
+      HISTORY_SIGNING_KEY_B64=${base64encode(history_signing_key)}
+
+  # ---------------------------------------------------------------------------
+  # Dokku install and app setup. The deploy key is added LAST: the deploy
+  # workflow treats `ssh dokku@<ip> apps:exists chat-ui` succeeding as
+  # "setup finished".
+  # ---------------------------------------------------------------------------
+  - path: /root/dokku-setup.sh
+    owner: root:root
+    permissions: "0700"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      APP=chat-ui
+      SECRETS_FILE=/root/dokku-setup.env
+      trap 'rm -f "$SECRETS_FILE"' EXIT
+
+      export HOME=/root
+      export DEBIAN_FRONTEND=noninteractive
+
+      systemctl enable --now unattended-upgrades
+
+      # Install Dokku non-interactively: preseed debconf, then run the pinned
+      # bootstrap script. No vhost subdomains (the app gets its own domain),
+      # and no key file: keys are added below with ssh-keys:add.
+      debconf-set-selections <<'EOF'
+      dokku dokku/vhost_enable boolean false
+      dokku dokku/hostname string ${domain}
+      dokku dokku/skip_key_file boolean true
+      dokku dokku/nginx_enable boolean true
+      EOF
+      wget -nv -O /root/dokku-bootstrap.sh "https://dokku.com/install/${dokku_version}/bootstrap.sh"
+      DOKKU_TAG="${dokku_version}" bash /root/dokku-bootstrap.sh
+      rm -f /root/dokku-bootstrap.sh
+
+      dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git --committish "${dokku_letsencrypt_version}" --name letsencrypt
+
+      # The app.
+      dokku apps:create "$APP"
+      dokku domains:set "$APP" "${domain}"
+      dokku git:set "$APP" deploy-branch main
+      dokku builder-dockerfile:set "$APP" dockerfile-path chat-ui/Dockerfile
+      # chat-ui/app.json holds the GET /health deploy check.
+      dokku app-json:set "$APP" appjson-path chat-ui/app.json
+      dokku ports:set "$APP" http:80:8080
+
+      # Secrets: decoded by Dokku from base64, read from the root-only file.
+      # shellcheck disable=SC1090
+      . "$SECRETS_FILE"
+      dokku config:set --encoded --no-restart "$APP" \
+        MODEL_ACCESS_KEY="$MODEL_ACCESS_KEY_B64" \
+        HISTORY_SIGNING_KEY="$HISTORY_SIGNING_KEY_B64"
+      unset MODEL_ACCESS_KEY_B64 HISTORY_SIGNING_KEY_B64
+      rm -f "$SECRETS_FILE"
+
+      # The image's index stage needs MODEL_ACCESS_KEY. Dokku exports the
+      # app's config into the docker build environment, so the build arg names
+      # the key without a value: the secret stays out of DOCKER_OPTIONS and
+      # off the docker build command line.
+      dokku docker-options:add "$APP" build "--build-arg MODEL_ACCESS_KEY"
+
+      # Streamed replies: no response buffering, long reads. CV uploads: 10MB.
+      dokku nginx:set "$APP" proxy-read-timeout 600s
+      dokku nginx:set "$APP" proxy-buffering off
+      dokku nginx:set "$APP" client-max-body-size 10m
+
+      # HTTPS. The certificate itself is issued by `letsencrypt:enable` in the
+      # deploy workflow, once DNS points here and the app is running.
+      dokku letsencrypt:set "$APP" email "${letsencrypt_email}"
+      dokku letsencrypt:cron-job --add
+
+      # Last: the deploy key. Its working marks setup as finished.
+      echo ${jsonencode(deploy_public_key)} | dokku ssh-keys:add deploy
+
+runcmd:
+  - [bash, /root/dokku-setup.sh]
