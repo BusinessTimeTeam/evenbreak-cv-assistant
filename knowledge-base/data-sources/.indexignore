@@ -1,0 +1,7 @@
+# Paths (glob patterns, relative to this folder) left out of the chat UI's
+# knowledge-base index. Use it for pages that match many topics but carry no
+# guidance of their own. Contents pages and lists of figures *inside* documents
+# (dot-leader lines like "Introduction ........ 23") are dropped automatically.
+
+# The course's table of contents: a list of every module.
+disability-inclusion-course/02-table-of-contents.md

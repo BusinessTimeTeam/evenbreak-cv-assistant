@@ -8,6 +8,7 @@ This module is copied into the Docker ``index`` stage on its own, so it must
 not import other app modules (e.g. extraction.py).
 """
 
+import fnmatch
 import logging
 import math
 import re
@@ -21,8 +22,16 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_SUFFIXES = (".md", ".txt", ".pdf")
 
+# Optional file at the data-sources root listing paths (glob patterns, relative
+# to the root) to leave out of the index, e.g. a course's table of contents.
+IGNORE_FILE = ".indexignore"
+
 _HEADING = re.compile(r"^#{1,6} ", re.MULTILINE)
 _BLANK_LINES = re.compile(r"\n\s*\n")
+# Dot leaders ("Introduction ........ 23") mark contents pages and lists of
+# figures/tables: they match many topics but carry no guidance.
+_DOT_LEADER = re.compile(r"\.{5,}")
+_CONTENTS_MIN_LEADERS = 5
 
 
 @dataclass(frozen=True)
@@ -44,11 +53,25 @@ def _read_pdf(path: Path) -> str:
         return ""
 
 
+def _ignore_patterns(root: Path) -> list[str]:
+    path = root / IGNORE_FILE
+    if not path.is_file():
+        return []
+    lines = (line.strip() for line in path.read_text().splitlines())
+    return [line for line in lines if line and not line.startswith("#")]
+
+
 def load_documents(root: Path) -> list[tuple[str, str]]:
     """Return (relative POSIX path, text) for every indexable file under root."""
+    ignored = _ignore_patterns(root)
     documents = []
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
         source = path.relative_to(root).as_posix()
+        if source == IGNORE_FILE:
+            continue
+        if any(fnmatch.fnmatch(source, pattern) for pattern in ignored):
+            logger.info("Skipping %s: listed in %s", source, IGNORE_FILE)
+            continue
         suffix = path.suffix.lower()
         if suffix not in SUPPORTED_SUFFIXES:
             logger.warning("Skipping %s: unsupported file type", source)
@@ -93,6 +116,10 @@ def _windows(text: str, max_tokens: int, overlap_tokens: int) -> list[str]:
     return windows
 
 
+def _is_contents_listing(text: str) -> bool:
+    return len(_DOT_LEADER.findall(text)) >= _CONTENTS_MIN_LEADERS
+
+
 def _merge_small(chunks: list[Chunk], min_tokens: int, max_tokens: int) -> list[Chunk]:
     """Fold chunks under min_tokens into a neighbour while the result still fits."""
     merged: list[Chunk] = []
@@ -131,6 +158,7 @@ def chunk_document(
                 pieces.append(paragraph)
             else:
                 pieces.extend(_windows(paragraph, max_tokens, overlap_tokens))
+        pieces = [piece for piece in pieces if not _is_contents_listing(piece)]
         # Greedily merge adjacent pieces within the section up to max_tokens.
         current = ""
         for piece in pieces:

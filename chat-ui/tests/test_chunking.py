@@ -51,6 +51,43 @@ def test_load_documents_raises_when_nothing_indexable(tmp_path):
         load_documents(tmp_path)
 
 
+def test_load_documents_skips_paths_listed_in_indexignore(tmp_path, caplog):
+    (tmp_path / "course").mkdir()
+    (tmp_path / "course" / "01-guidance.md").write_text("Useful guidance")
+    (tmp_path / "course" / "02-table-of-contents.md").write_text("Contents of every module")
+    (tmp_path / "notes.draft.md").write_text("Work in progress")
+    (tmp_path / ".indexignore").write_text(
+        "# Pages that match many topics but carry no guidance\n"
+        "course/02-table-of-contents.md\n"
+        "\n"
+        "*.draft.md\n"
+    )
+
+    with caplog.at_level(logging.WARNING):
+        docs = load_documents(tmp_path)
+
+    assert [source for source, _ in docs] == ["course/01-guidance.md"]
+    # The ignore file itself is configuration, not an unsupported document.
+    assert ".indexignore" not in caplog.text
+
+
+def test_contents_listings_are_dropped_from_chunks():
+    contents = "\n".join(
+        f"Chapter {i} Topic number {i} {'.' * 60} {i * 10}" for i in range(1, 13)
+    )
+    guidance = (
+        "Reasonable adjustments are changes an employer makes to remove barriers. "
+        "They can include flexible hours, assistive technology or a quiet workspace. " * 6
+    )
+    text = f"Contents\n{contents}\n\n## Adjustments\n{guidance}"
+
+    chunks = chunk_document("report.pdf", text)
+
+    assert chunks
+    assert all("....." not in c.text for c in chunks)
+    assert any("flexible hours" in c.text for c in chunks)
+
+
 def test_short_document_is_one_chunk():
     text = " ".join(["word"] * 100)
 
