@@ -44,6 +44,31 @@ def test_load_documents_skips_unsupported_and_empty_files(tmp_path, caplog):
         assert name in caplog.text
 
 
+def test_load_documents_skips_an_unreadable_pdf(tmp_path, caplog):
+    (tmp_path / "keep.md").write_text("Useful guidance")
+    (tmp_path / "broken.pdf").write_bytes(b"not really a pdf")
+
+    with caplog.at_level(logging.WARNING):
+        docs = load_documents(tmp_path)
+
+    assert [source for source, _ in docs] == ["keep.md"]
+    assert "broken.pdf" in caplog.text
+
+
+def test_load_documents_reads_pdf_columns_one_after_the_other(tmp_path):
+    left = ["Barriers", "Physical access", "Attitudes", "Communication"]
+    right = ["Adjustments", "Flexible hours", "Assistive software", "Quiet workspace"]
+    c = canvas.Canvas(str(tmp_path / "guide.pdf"))
+    for i, (a, b) in enumerate(zip(left, right)):
+        c.drawString(50, 700 - i * 20, a)
+        c.drawString(300, 700 - i * 20, b)
+    c.save()
+
+    [(_, text)] = load_documents(tmp_path)
+
+    assert text.splitlines() == left + right
+
+
 def test_load_documents_raises_when_nothing_indexable(tmp_path):
     (tmp_path / "empty.md").write_text("")
 

@@ -114,13 +114,13 @@
                             </p>
                             <form id="uploadForm" class="upload-form">
                                 <label class="upload-form__file-picker" for="cvFile">
-                                    <span id="fileLabel">Choose a PDF or Word file</span>
+                                    <span id="fileLabel">Choose a PDF, Word or text file</span>
                                     <input
                                         class="upload-form__file-input"
                                         type="file"
                                         id="cvFile"
                                         name="file"
-                                        accept=".pdf,.docx"
+                                        accept=".pdf,.docx,.odt,.rtf,.txt,.md"
                                         required
                                     />
                                 </label>
@@ -305,7 +305,7 @@
                 chatInner.classList.remove("chat__content--conversation");
 
                 uploadForm.reset();
-                fileLabel.textContent = "Choose a PDF or Word file";
+                fileLabel.textContent = "Choose a PDF, Word or text file";
                 uploadStatus.textContent = "";
                 uploadStatus.classList.remove("upload-form__status--error");
                 uploadBtn.disabled = false;
@@ -457,7 +457,7 @@
             cvFile.addEventListener("change", function () {
                 fileLabel.textContent = this.files[0]
                     ? this.files[0].name
-                    : "Choose a PDF or Word file";
+                    : "Choose a PDF, Word or text file";
                 uploadStatus.textContent = "";
                 uploadStatus.classList.remove("upload-form__status--error");
             });

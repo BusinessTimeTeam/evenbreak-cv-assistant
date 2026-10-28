@@ -4,8 +4,8 @@ Chunks follow the document's own structure where possible: markdown sections
 first, then paragraphs within a section, and only as a last resort a sliding
 window over words (with overlap) for a paragraph too long to keep whole.
 
-This module is copied into the Docker ``index`` stage on its own, so it must
-not import other app modules (e.g. extraction.py).
+This module is copied into the Docker ``index`` stage with pdf_text.py, so it
+must not import other app modules (e.g. extraction.py).
 """
 
 import fnmatch
@@ -15,8 +15,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from pypdf import PdfReader
-from pypdf.errors import PyPdfError
+import pdfplumber
+
+from pdf_text import page_text
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,9 @@ def estimate_tokens(text: str) -> int:
 
 def _read_pdf(path: Path) -> str:
     try:
-        reader = PdfReader(path)
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except (PyPdfError, OSError, ValueError) as exc:
+        with pdfplumber.open(path) as pdf:
+            return "\n".join(page_text(page) for page in pdf.pages)
+    except Exception as exc:  # pdfminer raises a variety of types on bad input
         logger.warning("Skipping %s: could not read PDF (%s)", path, exc)
         return ""
 

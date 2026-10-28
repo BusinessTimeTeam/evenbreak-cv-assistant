@@ -294,9 +294,9 @@ async def upload(
     file: UploadFile = File(...),
     model: str | None = Form(None),
 ):
-    """Accept an uploaded CV (PDF / Word), extract its text, store it against a
-    new session id, and return readiness metadata without calling the chat
-    model. The upload starts the conversation, so it fixes the conversation's
+    """Accept an uploaded CV (any of extraction.SUPPORTED_EXTENSIONS), extract
+    its text, store it against a new session id, and return readiness metadata
+    without calling the chat model. The upload starts the conversation, so it fixes the conversation's
     model and its running total starts with the cost of the CV check."""
     trial_model = _find_model(model)
     if trial_model is None:

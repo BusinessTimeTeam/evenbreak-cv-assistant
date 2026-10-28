@@ -100,7 +100,7 @@ def test_upload_returns_a_session_id(client):
 def test_upload_rejects_unsupported_file_type(client):
     resp = client.post(
         "/api/upload",
-        files={"file": ("notes.txt", b"hello", "text/plain")},
+        files={"file": ("photo.png", b"hello", "image/png")},
     )
     assert resp.status_code == 400
     assert "Unsupported" in resp.json()["error"]

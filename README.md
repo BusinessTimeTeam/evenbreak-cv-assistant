@@ -116,8 +116,11 @@ The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:
   has been edited, added to, reordered or is more than 24 hours old;
   Terraform generates the key (`random_password.history_signing_key`) and passes
   it to the app as a `SECRET` env var, and locally it comes from `.env`.
-- Accepts CV uploads (PDF / `.docx`) via `POST /api/upload`. The app extracts the
-  document's text server-side (`extraction.py`, using `pypdf` / `python-docx`),
+- Accepts CV uploads (PDF, `.docx`, `.odt`, `.rtf`, `.txt`, `.md`) via
+  `POST /api/upload`. The app extracts the document's text server-side
+  (`extraction.py`: `pdfplumber` for PDFs, splitting two-column layouts so each
+  column reads in order and listing link targets; `python-docx` for Word,
+  including tables, headers, footers and text boxes; `striprtf` for RTF),
   stores it keyed by a **session id**, and returns that id to the browser. On
   every `/api/chat` turn the browser sends the session id back and the server
   re-injects the CV as a stable leading message, so the model can reason about it
