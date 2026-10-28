@@ -131,11 +131,12 @@ def record_usage(model: str, usage: dict | None) -> None:
 def cost_log_line(
     kind: str, outcome: str, session_id: str | None, model: str, ledger: Ledger, total_microusd: int
 ) -> str:
-    reply, guard, rewrite, embed = (ledger.tokens(p) for p in ("reply", "guard", "rewrite", "embed"))
+    reply, guard, rewrite, status, embed = (ledger.tokens(p) for p in ("reply", "guard", "rewrite", "status", "embed"))
     return (
         f"Turn cost: kind={kind} outcome={outcome} session={session_id} model={model} "
         f"reply_in={reply[0]} reply_out={reply[1]} guard_in={guard[0]} guard_out={guard[1]} "
-        f"rewrite_in={rewrite[0]} rewrite_out={rewrite[1]} embed_in={embed[0]} "
+        f"rewrite_in={rewrite[0]} rewrite_out={rewrite[1]} "
+        f"status_in={status[0]} status_out={status[1]} embed_in={embed[0]} "
         f"turn_usd={ledger.microusd() / 1e6:.6f} total_usd={total_microusd / 1e6:.6f}"
     )
 

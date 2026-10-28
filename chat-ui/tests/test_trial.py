@@ -111,11 +111,14 @@ def test_cost_log_line_has_fields_and_no_text():
         "guard_out=0",
         "rewrite_in=0",
         "rewrite_out=0",
+        "status_in=0",
+        "status_out=0",
         "embed_in=0",
         "turn_usd=0.003480",
         "total_usd=0.012345",
     ):
         assert field in line
+    assert line.index("rewrite_out=") < line.index("status_in=") < line.index("status_out=") < line.index("embed_in=")
 
 
 def test_kimi_k3_sends_the_top_p_it_requires():
