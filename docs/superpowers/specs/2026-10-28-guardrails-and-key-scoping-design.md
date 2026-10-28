@@ -3,6 +3,8 @@
 **Date:** 2026-10-28
 **Status:** Draft (pending review)
 
+**Update 2026-10-28:** Part 1 (two model access keys and the VPC) was dropped. The DigitalOcean console couldn't list VPCs when creating a restricted key, and the restrictions only help if a key leaks, which isn't expected. One `MODEL_ACCESS_KEY` is used at build and run time, as before.
+
 ## Why
 
 The chat UI is public and spends money on every message. The worry is someone
@@ -22,7 +24,7 @@ a borderline misuse through.
 
 ## Goals
 
-1. **Two model access keys.** The key the running app uses only works from
+1. **Two model access keys (dropped — see update).** The key the running app uses only works from
    inside a DigitalOcean VPC, so a leaked runtime key is useless elsewhere. A
    second key, used only at build time to embed the knowledge base, has no VPC
    restriction but can only call the embedding model.
@@ -47,7 +49,7 @@ a borderline misuse through.
 - Checking the model's *output* (answers) for topic or leakage.
 - Changing how errors are reported to the browser.
 
-## Part 1: Two model access keys
+## Part 1: Two model access keys (dropped — see update)
 
 ### Keys
 
