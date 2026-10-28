@@ -9,6 +9,7 @@ retrieved passages, history and message to the chat model.
 Environment variables (injected by terraform via App Platform, or from .env
 locally):
     MODEL_ACCESS_KEY   — DO model access key for serverless inference (required)
+    HISTORY_SIGNING_KEY — secret that signs conversation history (required)
     INFERENCE_BASE_URL — default https://inference.do-ai.run/v1
     CHAT_MODEL         — default openai-gpt-oss-20b
     EMBEDDING_MODEL    — default qwen3-embedding-0.6b; must match the index
@@ -28,6 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from extraction import extract_text
+from history_signing import HistoryTokenError, sign_history, verify_history
 from inference import InferenceConfig, InferenceError, chat, embed
 from prompting import build_messages, load_system_prompt, rewrite_queries
 from retrieval import Index, ScoredChunk
@@ -37,6 +39,8 @@ logger = logging.getLogger("chat-ui")
 
 _config = InferenceConfig.from_env()
 SYSTEM_PROMPT = load_system_prompt()
+HISTORY_SIGNING_KEY = os.environ["HISTORY_SIGNING_KEY"].encode()
+EXPIRED_MESSAGE = "This conversation has expired. Please start a new one."
 RETRIEVAL_K = int(os.environ.get("RETRIEVAL_K", "10"))
 DEFAULT_INDEX_PATH = "/index/kb_index.npz"
 
@@ -123,25 +127,54 @@ async def chat_endpoint(request: Request):
     If the request carries a session id with a stored CV, that CV is included
     on every turn so the model can reason about it. ``sources`` lists the
     retrieved knowledge-base files (the UI ignores it; the comparison uses it).
+
+    The browser sends back the history and ``history_token`` from the previous
+    response; history that fails verification is rejected with a 400. The
+    response carries the updated history and a fresh token.
     """
     body = await request.json()
     message = body.get("message", "")
-    history = [
-        {"role": h.get("role", "user"), "content": h.get("content", "")}
-        for h in body.get("history", [])
-    ]
+    received = body.get("history", [])
+    history_token = body.get("history_token")
     session_id = body.get("session_id")
+
+    # Verify the history exactly as received, before anything reads it.
+    try:
+        verify_history(HISTORY_SIGNING_KEY, received, session_id, history_token)
+    except HistoryTokenError as exc:
+        logger.info("Rejected chat history: %s", exc)
+        return JSONResponse(
+            status_code=400, content={"error": EXPIRED_MESSAGE, "expired": True}
+        )
+
+    history = [
+        {"role": h.get("role", "user"), "content": h.get("content", "")} for h in received
+    ]
     cv = _cv_sessions.get(session_id) if session_id else None
 
     try:
         content, passages = await _answer(message, history, cv)
     except InferenceError as exc:
         logger.warning("Chat turn failed: %s", exc)
-        return JSONResponse(content={"content": f"Error: {exc}", "sources": []})
+        # The failed turn isn't added, so the browser keeps its verified history.
+        return JSONResponse(
+            content={
+                "content": f"Error: {exc}",
+                "sources": [],
+                "history": received,
+                "history_token": history_token,
+            }
+        )
+    updated = received + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": content},
+    ]
     return JSONResponse(
         content={
             "content": content,
             "sources": [{"source": p.source, "score": p.score} for p in passages],
+            "history": updated,
+            "history_token": sign_history(HISTORY_SIGNING_KEY, updated, session_id),
         }
     )
 

@@ -13,6 +13,7 @@ from docx import Document
 
 # main reads this at import time; set before importing it.
 os.environ.setdefault("MODEL_ACCESS_KEY", "sk-test")
+os.environ.setdefault("HISTORY_SIGNING_KEY", "test-signing-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

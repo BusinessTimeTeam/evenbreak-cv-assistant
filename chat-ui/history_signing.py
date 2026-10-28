@@ -50,17 +50,23 @@ def verify_history(
     *,
     now: float | None = None,
 ) -> None:
-    if not history:
+    # Only an empty list skips verification (a conversation's first turn has
+    # no history to protect). Anything else malformed must fail, not pass.
+    if history == [] and isinstance(history, list):
         return
-    if not token or "." not in token:
+    if not isinstance(history, list) or not all(isinstance(t, dict) for t in history):
+        raise HistoryTokenError("malformed history")
+    if not isinstance(token, str) or "." not in token:
         raise HistoryTokenError("missing or malformed history token")
     issued, _, mac = token.partition(".")
     try:
         issued_at = int(issued)
-    except ValueError:
-        raise HistoryTokenError("malformed history token") from None
-    expected = _mac(key, history, session_id, issued_at)
-    if not hmac.compare_digest(expected.encode(), mac.encode()):
+        expected = _mac(key, history, session_id, issued_at)
+        matches = hmac.compare_digest(expected.encode(), mac.encode())
+    except (ValueError, TypeError, RecursionError):
+        # Includes UnicodeEncodeError (lone surrogates) and over-long integers.
+        raise HistoryTokenError("malformed history or token") from None
+    if not matches:
         raise HistoryTokenError("history token does not match")
     current = time.time() if now is None else now
     if current - issued_at > MAX_AGE_SECONDS:

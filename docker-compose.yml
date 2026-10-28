@@ -21,6 +21,9 @@ services:
       - "8080:8080"
     env_file:
       - ./.env
+    environment:
+      # Falls back to a fixed dev value so an older .env without it still starts.
+      HISTORY_SIGNING_KEY: ${HISTORY_SIGNING_KEY:-local-dev-signing-key}
     volumes:
       - ./chat-ui:/app
     command: >

@@ -74,3 +74,34 @@ def test_rejects_missing_or_malformed_token(token):
 
 def test_empty_history_needs_no_token():
     verify_history(KEY, [], None, None)
+
+
+@pytest.mark.parametrize("token", [123, ["x"], {"a": 1}, b"1.abc", "1.\ud800", "\ud800.abc", "9" * 5000 + ".abc"])
+def test_malformed_token_raises_only_history_token_error(token):
+    with pytest.raises(HistoryTokenError):
+        verify_history(KEY, HISTORY, "s1", token)
+
+
+@pytest.mark.parametrize(
+    "history",
+    [None, 0, "", {}, (), "abc", {"role": "user"}, ["x"], [None], [{"role": "user", "content": "\ud800"}]],
+)
+def test_malformed_history_raises_only_history_token_error(history):
+    token = sign_history(KEY, HISTORY, "s1")
+    with pytest.raises(HistoryTokenError):
+        verify_history(KEY, history, "s1", token)
+
+
+def test_only_an_empty_list_skips_verification():
+    verify_history(KEY, [], "s1", None)
+    for falsy in (None, 0, "", {}, ()):
+        with pytest.raises(HistoryTokenError):
+            verify_history(KEY, falsy, "s1", None)
+
+
+def test_deeply_nested_history_raises_history_token_error():
+    nested = [{"role": "user", "content": "x"}]
+    for _ in range(5000):
+        nested = [nested]
+    with pytest.raises(HistoryTokenError):
+        verify_history(KEY, nested, "s1", "1.abc")

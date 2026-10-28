@@ -175,7 +175,10 @@
             const sendBtn = document.getElementById("send");
             const composer = document.getElementById("composer");
             const backBtn = document.getElementById("backBtn");
+            // The conversation as last returned by the server, with its signed
+            // token. Sent back unchanged each turn; the server rejects edits.
             let history = [];
+            let historyToken = null;
             // Set after a CV upload; sent on every chat turn so the server can
             // re-attach the stored CV. The CV text itself is never held here.
             let sessionId = null;
@@ -214,6 +217,7 @@
                     .querySelectorAll(".message, .ready-panel")
                     .forEach((element) => element.remove());
                 history = [];
+                historyToken = null;
                 sessionId = null;
                 textarea.value = "";
                 textarea.style.blockSize = "auto";
@@ -236,6 +240,7 @@
             function startGeneralQA() {
                 sessionId = null;
                 history = [];
+                historyToken = null;
                 startConversation();
                 textarea.placeholder = "Ask a question about Evenbreak's resources...";
                 showGeneralReady();
@@ -301,7 +306,6 @@
                 if (ready) ready.remove();
 
                 appendMessage("user", message);
-                history.push({ role: "user", content: message });
 
                 textarea.value = "";
                 textarea.style.blockSize = "auto";
@@ -315,7 +319,8 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             message,
-                            history: history.slice(0, -1),
+                            history,
+                            history_token: historyToken,
                             session_id: sessionId,
                         }),
                     });
@@ -326,7 +331,14 @@
 
                     typingEl.remove();
                     appendMessage("assistant", content, isError);
-                    history.push({ role: "assistant", content });
+                    if (data.expired) {
+                        // Start the conversation again but keep the CV session.
+                        history = [];
+                        historyToken = null;
+                    } else if (data.history) {
+                        history = data.history;
+                        historyToken = data.history_token;
+                    }
                 } catch (err) {
                     typingEl.remove();
                     appendMessage(
@@ -378,6 +390,7 @@
 
                     sessionId = data.session_id;
                     history = [];
+                    historyToken = null;
                     showCvReady(data.filename || file.name);
                 } catch (err) {
                     uploadStatus.textContent = "Upload error: " + err.message;

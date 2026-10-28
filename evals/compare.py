@@ -49,7 +49,7 @@ async def run_new(
     case: dict, cvs_dir: Path, base_url: str, *, client: httpx.AsyncClient | None = None
 ) -> list[dict]:
     cv_text = _cv_text(case, cvs_dir)
-    history, results = [], []
+    history, history_token, results = [], None, []
     async with client or httpx.AsyncClient(base_url=base_url, timeout=TIMEOUT) as http:
         session_id = None
         if cv_text:
@@ -58,7 +58,12 @@ async def run_new(
             resp.raise_for_status()
             session_id = resp.json()["session_id"]
         for turn in case["turns"]:
-            payload = {"message": turn, "history": history, "session_id": session_id}
+            payload = {
+                "message": turn,
+                "history": history,
+                "history_token": history_token,
+                "session_id": session_id,
+            }
             resp = await http.post("/api/chat", json=payload)
             resp.raise_for_status()
             body = resp.json()
@@ -66,7 +71,8 @@ async def run_new(
             results.append(
                 {"turn": turn, "answer": answer, "sources": [s["source"] for s in body.get("sources", [])]}
             )
-            history = history + [{"role": "user", "content": turn}, {"role": "assistant", "content": answer}]
+            # The server signs the history it returns; send it back unchanged.
+            history, history_token = body["history"], body["history_token"]
     return results
 
 

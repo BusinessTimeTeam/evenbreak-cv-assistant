@@ -31,7 +31,12 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
         calls["chat"].append(body)
         return httpx.Response(
             200,
-            json={"content": f"new {len(calls['chat'])}", "sources": [{"source": "a.md", "score": 0.9}]},
+            json={
+                "content": f"new {len(calls['chat'])}",
+                "sources": [{"source": "a.md", "score": 0.9}],
+                "history": [{"role": "user", "content": "echo"}],
+                "history_token": f"token-{len(calls['chat'])}",
+            },
         )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
@@ -39,10 +44,9 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
 
     assert calls["upload"] == 1
     assert [c["session_id"] for c in calls["chat"]] == ["s-1", "s-1"]
-    assert calls["chat"][1]["history"] == [
-        {"role": "user", "content": "First question?"},
-        {"role": "assistant", "content": "new 1"},
-    ]
+    assert calls["chat"][0]["history"] == [] and calls["chat"][0]["history_token"] is None
+    assert calls["chat"][1]["history"] == [{"role": "user", "content": "echo"}]
+    assert calls["chat"][1]["history_token"] == "token-1"
     assert result[1] == {"turn": "Follow-up about that?", "answer": "new 2", "sources": ["a.md"]}
 
 
