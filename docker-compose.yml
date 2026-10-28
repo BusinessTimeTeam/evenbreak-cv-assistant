@@ -59,6 +59,9 @@ services:
   # Comparison against the old agent's saved answers (evals/compare.py). Uses the
   # dev image and needs the chat-ui service running:
   #   docker compose up -d chat-ui && docker compose run --rm evals python /evals/compare.py
+  # Also runs the guardrail evals (evals/guardrails_eval.py), which call the
+  # classifier directly with MODEL_ACCESS_KEY from .env (no chat-ui needed):
+  #   docker compose run --rm evals python /evals/guardrails_eval.py [--case ID]
   evals:
     profiles: ["tools"]
     build:

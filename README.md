@@ -129,6 +129,22 @@ The index is built on every deploy too, so it is never committed to git.
 
 > Running tests: `docker compose run --rm chat-ui-test`
 
+**Guardrail evals.** `evals/guardrails_eval.py` runs the message and CV checks
+against the labelled cases in `evals/guardrail_cases.json` (CV fixtures in
+`evals/guardrail-cvs/` and `evals/cvs/`), using the real model and your `.env`
+key (a fraction of a penny per run):
+
+```bash
+docker compose run --rm evals python /evals/guardrails_eval.py            # all cases
+docker compose run --rm evals python /evals/guardrails_eval.py --case ID  # one case
+```
+
+It prints PASS/FAIL per case, writes `evals/results/<timestamp>/guardrails.json`
+(not committed) and exits 1 on any **false block** (a genuine message or CV
+refused). Missed blocks are reported but tolerated. The model's verdicts vary a
+little between runs, so run it more than once after changing the prompts in
+`chat-ui/guardrails.py`.
+
 ### Adding web pages to the knowledge base
 
 `tools/scrape/` turns web pages into markdown documents in
