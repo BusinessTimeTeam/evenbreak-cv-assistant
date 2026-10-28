@@ -176,16 +176,6 @@ body {
   font-weight: var(--eb-font-weight-medium);
 }
 
-.site-header__badge {
-  background-color: var(--eb-color-teal-dark);
-  border-radius: var(--eb-radius-small);
-  color: var(--eb-color-ink-on-dark);
-  font-size: var(--eb-font-size-xs);
-  font-weight: var(--eb-font-weight-medium);
-  padding-block: var(--eb-space-xs);
-  padding-inline: var(--eb-space-sm);
-}
-
 /* Application shell */
 .app {
   display: grid;

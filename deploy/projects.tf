@@ -14,10 +14,10 @@ locals {
 }
 
 # Create a new project if project_uuid is not provided.
-resource "digitalocean_project" "rag_assistant" {
+resource "digitalocean_project" "cv_assistant" {
   count       = var.project_uuid == "" ? 1 : 0
   name        = local.project_display_name
-  purpose     = "RAG Assistant"
+  purpose     = "Evenbreak CV Assistant"
   environment = "Development"
 }
 
@@ -28,7 +28,7 @@ data "digitalocean_project" "existing" {
 }
 
 locals {
-  active_project_id = var.project_uuid == "" ? digitalocean_project.rag_assistant[0].id : data.digitalocean_project.existing[0].id
+  active_project_id = var.project_uuid == "" ? digitalocean_project.cv_assistant[0].id : data.digitalocean_project.existing[0].id
 }
 
 resource "digitalocean_project_resources" "project_resources" {

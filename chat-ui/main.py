@@ -1,4 +1,4 @@
-"""RAG Assistant Chat UI — a lightweight FastAPI app that answers chat messages
+"""Evenbreak CV Assistant chat UI — a lightweight FastAPI app that answers chat messages
 using Evenbreak's knowledge base and DigitalOcean serverless inference, and
 serves a simple web interface.
 
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="RAG Assistant", lifespan=lifespan)
+app = FastAPI(title="Evenbreak CV Assistant", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
