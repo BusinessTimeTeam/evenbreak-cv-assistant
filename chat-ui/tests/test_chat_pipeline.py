@@ -669,14 +669,48 @@ def test_abandoned_turn_cancels_the_reply_and_logs_abandoned(pipeline, monkeypat
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+        seen = len(events)
+        await asyncio.sleep(main.STATUS_INTERVAL_SECONDS * 5)
+        pipeline["events_after_cancel"] = events[seen:]
 
     with caplog.at_level("INFO"):
         asyncio.run(scenario())
 
     assert pipeline["stream_cancelled"] is True
     assert "outcome=abandoned" in caplog.text
+    assert caplog.text.count("Turn cost:") == 1
     assert "secret" not in caplog.text
     assert [e for e in events if e["type"] in ("done", "error")] == []
+    # The status feed stopped with the turn.
+    assert pipeline["events_after_cancel"] == []
+
+
+def test_crash_after_the_reply_streams_error_instead_of_hanging(pipeline, monkeypatch, caplog):
+    def boom(*args):
+        raise RuntimeError("secret-crash-detail")
+
+    monkeypatch.setattr(trial, "cost_log_line", boom)
+
+    with caplog.at_level("INFO"):
+        resp = _chat({"message": "Hi", "history": []})
+
+    final = _final(resp)
+    assert final["type"] == "error"
+    assert final["error"] == main.REPLY_FAILED_MESSAGE
+    assert final["history"] == []
+    assert "RuntimeError" in caplog.text
+    assert "secret-crash-detail" not in caplog.text
+
+
+@pytest.mark.parametrize("message", [123, None, ["Hi"], {"text": "Hi"}])
+def test_non_string_message_is_rejected_with_400(pipeline, message):
+    pipeline["verdict"] = Verdict(False, "off_topic")
+
+    resp = _chat({"message": message, "history": []})
+
+    assert resp.status_code == 400
+    assert "error" in resp.json()
+    assert pipeline["check"] == []
 
 
 def test_every_turn_logs_one_cost_line(pipeline, caplog):

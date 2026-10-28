@@ -52,6 +52,7 @@ SYSTEM_PROMPT = load_system_prompt()
 HISTORY_SIGNING_KEY = os.environ["HISTORY_SIGNING_KEY"].encode()
 EXPIRED_MESSAGE = "This conversation has expired. Please start a new one."
 UNKNOWN_MODEL_MESSAGE = "Unknown model."
+INVALID_MESSAGE = "The message must be text."
 REPLY_FAILED_MESSAGE = (
     "Sorry, something went wrong while writing that reply. Please try sending your message again."
 )
@@ -306,13 +307,26 @@ async def _run_turn(
     )
 
 
+async def _next_event(queue: asyncio.Queue, task: asyncio.Task) -> dict | None:
+    """The turn's next event, or None if the turn ended without emitting one."""
+    get = asyncio.ensure_future(queue.get())
+    try:
+        await asyncio.wait({get, task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        if not get.done():
+            get.cancel()
+    if get.done() and not get.cancelled():
+        return get.result()
+    return queue.get_nowait() if not queue.empty() else None
+
+
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
     """Answer a chat message from the knowledge base as a stream of events.
 
     The response is newline-delimited JSON (see ``_run_turn``): ``status`` and
-    ``answer`` events, ending with ``done`` or ``error``. Rejected requests get
-    a JSON 400 instead.
+    ``answer`` events, ending with ``done`` or ``error``. Rejected requests
+    (including a message that isn't a string) get a JSON 400 instead.
 
     If the request carries a session id with a stored CV, that CV is included
     on every turn so the model can reason about it. ``sources`` lists the
@@ -329,6 +343,8 @@ async def chat_endpoint(request: Request):
     """
     body = await request.json()
     message = body.get("message", "")
+    if not isinstance(message, str):
+        return JSONResponse(status_code=400, content={"error": INVALID_MESSAGE})
     received = body.get("history", [])
     history_token = body.get("history_token")
     session_id = body.get("session_id")
@@ -383,7 +399,19 @@ async def chat_endpoint(request: Request):
         )
         try:
             while True:
-                event = await queue.get()
+                event = await _next_event(queue, task)
+                if event is None:
+                    # The turn ended without a final event, so it crashed after
+                    # the reply; end the stream rather than wait forever.
+                    exc = task.exception()
+                    logger.warning(
+                        "Chat turn crashed: %s", type(exc).__name__ if exc else "no final event"
+                    )
+                    event = {
+                        "type": "error",
+                        "error": REPLY_FAILED_MESSAGE,
+                        **_conversation(received, session_id, model, total),
+                    }
                 yield json.dumps(event) + "\n"
                 if event["type"] in ("done", "error"):
                     break
