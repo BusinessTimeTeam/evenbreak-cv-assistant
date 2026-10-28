@@ -35,3 +35,6 @@ scratch.txt
 
 # Locally built knowledge-base index (never committed)
 .index/
+
+# Saved HTML pages fed to the scraper (not committed)
+tools/scrape/input/

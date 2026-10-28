@@ -222,6 +222,32 @@ The index is built on every deploy too, so it is never committed to git.
 
 > Running tests: `docker compose run --rm chat-ui-test`
 
+### Adding web pages to the knowledge base
+
+`tools/scrape/` turns web pages into markdown documents in
+`knowledge-base/data-sources/web/`, using
+[trafilatura](https://trafilatura.readthedocs.io/) to keep each page's main
+content and drop navigation, cookie banners and footers. Run it by hand when you
+want to add or refresh pages, review the output, and commit it:
+
+```bash
+docker compose run --rm scrape https://www.example.org/page/          # one or more pages
+docker compose run --rm scrape --sitemap https://www.example.org/sitemap.xml
+```
+
+The scraper identifies itself as
+`EvenbreakCVAssistant/1.0 (+contact: mail@mayortech.co.uk)`, respects robots.txt
+and waits 2 seconds between requests (`--delay`). evenbreak.com currently returns
+**403 Access Denied** to automated requests, so ask Evenbreak to whitelist that
+user agent. Until then, save a page from your browser (**Save Page As… → HTML
+only**) into `tools/scrape/input/` (gitignored) and run:
+
+```bash
+docker compose run --rm scrape --html /input/page.htm --url https://www.evenbreak.com/the-page/
+```
+
+Scraper tests: `docker compose run --rm --entrypoint python scrape -m pytest tests`
+
 ## Security
 
 - The `do_token` variable is marked as sensitive and will not appear in Terraform plan output.

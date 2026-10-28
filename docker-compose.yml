@@ -37,3 +37,18 @@ services:
     volumes:
       - ./chat-ui:/app
     command: python -m pytest -v
+
+  # Manual scraper: turns web pages into knowledge-base documents under
+  # knowledge-base/data-sources/web/. Not started by `docker compose up`.
+  #   docker compose run --rm scrape https://www.example.org/page/
+  #   docker compose run --rm scrape --sitemap https://www.example.org/sitemap.xml
+  #   docker compose run --rm scrape --html /input/page.htm --url https://www.example.org/page/
+  # (for --html, put the saved page in tools/scrape/input/, which is gitignored)
+  scrape:
+    profiles: ["tools"]
+    build:
+      context: ./tools/scrape
+    volumes:
+      - ./tools/scrape:/app
+      - ./tools/scrape/input:/input:ro
+      - ./knowledge-base/data-sources/web:/out
