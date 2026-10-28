@@ -41,3 +41,6 @@ tools/scrape/input/
 
 # Comparison runs (the old-agent baseline in evals/baseline/ IS committed)
 evals/results/
+
+# Editor swap files
+*.swp

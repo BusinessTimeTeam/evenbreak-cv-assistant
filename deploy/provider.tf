@@ -6,12 +6,6 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.106.0"
     }
-    # No longer used by any resource; kept for one apply so Terraform can
-    # destroy the old null_resource.agent_guardrails / kb_reindex in state.
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.3"
-    }
     # Used by random_string.suffix for fresh-deployment resource names.
     random = {
       source  = "hashicorp/random"
