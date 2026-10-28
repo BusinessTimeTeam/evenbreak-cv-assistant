@@ -9,7 +9,9 @@ output "agent_uuid" {
 }
 
 output "agent_endpoint" {
-  value       = "${digitalocean_agent_platform_agent.rag_agent.deployment[0].url}/api/v1/chat/completions"
+  # A new agent has no deployment until after apply; the provider plans it as an
+  # empty list, so index it inside try() or planning a fresh agent fails.
+  value       = try("${digitalocean_agent_platform_agent.rag_agent.deployment[0].url}/api/v1/chat/completions", null)
   description = "OpenAI-compatible chat endpoint of the agent (for local dev AGENT_ENDPOINT)."
 }
 
