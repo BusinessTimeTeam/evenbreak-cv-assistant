@@ -6,7 +6,8 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.106.0"
     }
-    # Used by null_resource.agent_post_setup / kb_reindex glue.
+    # No longer used by any resource; kept for one apply so Terraform can
+    # destroy the old null_resource.agent_guardrails / kb_reindex in state.
     null = {
       source  = "hashicorp/null"
       version = "~> 3.3"

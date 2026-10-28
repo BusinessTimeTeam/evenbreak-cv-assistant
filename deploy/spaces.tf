@@ -2,10 +2,9 @@
 #
 # Documents live in knowledge-base/data-sources/ in this repo and are synced to
 # the bucket by Terraform: add/edit/remove a file there and `terraform apply`
-# creates/updates/deletes the matching object. The knowledge base ingests this
-# bucket via the spaces data source defined in knowledge_base.tf.
-#
-# Co-located with the knowledge base in tor1 by default (var.spaces_region).
+# creates/updates/deletes the matching object. Nothing reads the bucket any
+# more (the chat UI builds its index from the repo); it is kept until the
+# infrastructure is rebuilt.
 resource "digitalocean_spaces_bucket" "kb_docs" {
   name          = "${local.resource_name}-kb-docs"
   region        = var.spaces_region

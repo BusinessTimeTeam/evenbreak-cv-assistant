@@ -69,22 +69,6 @@ variable "region" {
 }
 
 // =============================================================================
-// MODEL CONFIGURATION
-// =============================================================================
-
-variable "model_name" {
-  type        = string
-  default     = "OpenAI GPT-oss-20b"
-  description = "Display name of the serverless inference model. Resolved to a UUID via the digitalocean_agent_platform_models data source (see models.tf)."
-}
-
-variable "embedding_model_name" {
-  type        = string
-  default     = "Qwen3 Embedding 0.6B"
-  description = "Display name of the embedding model. Resolved to a UUID via the digitalocean_agent_platform_models data source (see models.tf)."
-}
-
-// =============================================================================
 // APP PLATFORM CONFIGURATION
 // =============================================================================
 
@@ -110,77 +94,4 @@ variable "model_access_key" {
   type        = string
   sensitive   = true
   description = "DO model access key the chat UI uses for serverless inference (embedding the knowledge base at build time, and chat at run time). Create one in the DO console (Inference > Model Access Keys) scoped to gpt-oss-20b and Qwen3 Embedding 0.6B, and supply via TF_VAR_model_access_key."
-}
-
-variable "agent_api_key" {
-  type        = string
-  sensitive   = true
-  description = "Secret API key the chat UI uses to call the managed agent. Mint one out-of-band (DO console > GenAI > Agents > API Keys, or the API) and supply via TF_VAR_agent_api_key. The provider has no resource to create agent API keys, so this is operator-supplied like do_token."
-}
-
-// =============================================================================
-// AGENT CONFIGURATION
-// =============================================================================
-
-variable "agent_instruction" {
-  type        = string
-  description = "System instruction for the managed agent."
-}
-
-variable "agent_temperature" {
-  type        = number
-  default     = 0
-  description = "Temperature for inference (0.0 = deterministic, 1.0 = creative). Supplied by model preset."
-}
-
-variable "agent_max_tokens" {
-  type        = number
-  default     = 4096
-  description = "Maximum tokens in the agent's response. Supplied by model preset."
-}
-
-variable "agent_k" {
-  type        = number
-  default     = 5
-  description = "Number of knowledge base documents to retrieve per query."
-}
-
-variable "agent_top_p" {
-  type        = number
-  default     = 1
-  description = "Nucleus sampling cutoff for inference (0.0-1.0)."
-}
-
-variable "agent_retrieval_method" {
-  type        = string
-  default     = "RETRIEVAL_METHOD_SUB_QUERIES"
-  description = "Knowledge base retrieval method for the agent."
-}
-
-variable "agent_provide_citations" {
-  type        = bool
-  default     = true
-  description = "Whether the agent returns citations for retrieved knowledge base content."
-}
-
-// =============================================================================
-// GUARDRAIL CONFIGURATION
-// =============================================================================
-
-variable "guardrail_jailbreak_uuid" {
-  type        = string
-  default     = ""
-  description = "UUID of the jailbreak detection guardrail. Resolved by do-terraform."
-}
-
-variable "guardrail_content_mod_uuid" {
-  type        = string
-  default     = ""
-  description = "UUID of the content moderation guardrail. Resolved by do-terraform."
-}
-
-variable "guardrail_sensitive_data_uuid" {
-  type        = string
-  default     = ""
-  description = "UUID of the sensitive data detection guardrail. Resolved by do-terraform."
 }
