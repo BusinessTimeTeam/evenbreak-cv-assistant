@@ -1,9 +1,12 @@
 name: Terraform Apply
 
 # Applies the deploy/ Terraform stack on every push to main that touches infra.
-# (Document changes need no apply: App Platform rebuilds the app, and its index,
-# on every push.) State lives in the DO Spaces s3 backend, so CI works
-# against the same state as local runs.
+# (Document changes need no apply: App Platform and the Dokku deploy workflow,
+# deploy.yml, rebuild the app, and its index, on every push.) State lives in the
+# DO Spaces s3 backend, so CI works against the same state as local runs.
+#
+# After a successful apply it starts deploy.yml, because an apply may have
+# replaced the Dokku droplet, which comes up empty until the app is pushed.
 
 on:
   push:
@@ -21,6 +24,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write # to start deploy.yml after the apply
 
 jobs:
   apply:
@@ -49,3 +53,10 @@ jobs:
 
       - name: Terraform apply
         run: terraform apply -auto-approve -input=false
+
+      # workflow_dispatch runs are created even when started with the
+      # GITHUB_TOKEN. The deploy waits until the droplet has finished setting up.
+      - name: Start a deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main

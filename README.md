@@ -5,8 +5,13 @@ was originally licensed under the Apache 2 licence.
 
 A UK-focused CV, employment and disability-inclusion assistant. The stack deploys:
 
-- An **App Platform** service hosting the chat UI, which does its own retrieval
-  over a knowledge-base index built into its image.
+- A **Dokku droplet** in London (`lon1`, 2GB RAM) hosting the chat UI on
+  `evenbreak-cv.businesstime.team`, which does its own retrieval over a
+  knowledge-base index built into its image. It replaces App Platform, whose
+  100s request limit and response buffering break streamed replies.
+- An **App Platform** service hosting the same chat UI. It is being retired:
+  it runs side by side with the droplet until the droplet is confirmed working,
+  then it is removed.
 - **DigitalOcean serverless inference** for embeddings (Qwen3 Embedding 0.6B) and
   chat (gpt-oss-20b, or the model the user picks during the model trial), called
   directly with a model access key.
@@ -17,7 +22,7 @@ A UK-focused CV, employment and disability-inclusion assistant. The stack deploy
 ```
 Build:  knowledge-base/data-sources/  ──>  chunk + embed  ──>  index in the image
 
-Chat:   User  ──>  Chat UI (App Platform)
+Chat:   User  ──>  Chat UI (Dokku droplet; App Platform until it is retired)
                        │  rewrite the message into search queries
                        │  embed them and search the in-memory index
                        ▼
@@ -68,6 +73,63 @@ docker compose --profile tools run --rm evals python /app/check_models.py
 
 To remove the trial, follow the docstring at the top of `chat-ui/trial.py`.
 
+## Hosting on Dokku
+
+The droplet (`deploy/droplet.tf`) is disposable. On first boot, cloud-init
+(`deploy/cloud-init.yaml.tftpl`) installs Dokku and the Let's Encrypt plugin,
+creates the `chat-ui` app (deploy branch `main`, built from `chat-ui/Dockerfile`,
+healthcheck in `chat-ui/app.json`), sets its secrets and nginx settings
+(no response buffering, 600s reads, 10MB uploads), and adds the deploy key last.
+The app itself arrives with the next deploy. Any change to that setup, including
+a rotated secret, replaces the droplet. The reserved IP and the SSH host key come
+from Terraform, so DNS and `known_hosts` never change when it is replaced. The
+firewall lets in only ports 22, 80 and 443.
+
+Deploys (`.github/workflows/deploy.yml`) push `main` to
+`ssh://dokku@<reserved_ip>:22/chat-ui` with `dokku/github-action`, and run:
+
+- on every push to `main`
+- after every Terraform apply (`terraform-apply.yml` starts one), in case the
+  apply replaced the droplet
+- by hand from the Actions tab
+
+Each deploy first waits, up to 20 minutes, until
+`ssh dokku@<reserved_ip> apps:exists chat-ui` succeeds, which means a new
+droplet has finished setting up. After pushing it enables the Let's Encrypt
+certificate if it is not active yet. That step only warns if it fails, because
+it fails until the domain's A record points at the reserved IP.
+
+### Setting up a new server
+
+1. In `deploy/terraform.tfvars`, set `letsencrypt_email` and
+   `admin_ssh_public_keys` (your own SSH public keys, for logging in as root).
+2. Run `terraform apply` in `deploy/` (or merge to `main` and let CI apply it).
+3. At the domain's DNS host, add an A record for
+   `evenbreak-cv.businesstime.team` pointing at `terraform output -raw reserved_ip`.
+   This is needed once: the reserved IP survives droplet rebuilds.
+4. Copy the outputs into the GitHub repo's Actions settings, once:
+
+   | GitHub setting | Kind | Value |
+   |---|---|---|
+   | `DOKKU_SSH_PRIVATE_KEY` | secret | `terraform output -raw dokku_deploy_private_key` |
+   | `DOKKU_KNOWN_HOSTS` | secret | `terraform output -raw dokku_ssh_known_hosts` |
+   | `DOKKU_HOST` | variable | `terraform output -raw reserved_ip` |
+
+5. Run the **Deploy** workflow from the Actions tab. It waits for the droplet to
+   finish setting up, deploys, and enables HTTPS.
+
+## GitHub Actions secrets and variables
+
+| Name | Kind | Used by | Value |
+|---|---|---|---|
+| `DO_TOKEN` | secret | Terraform Apply | DigitalOcean API token (`TF_VAR_do_token`) |
+| `MODEL_ACCESS_KEY` | secret | Terraform Apply | Model access key (`TF_VAR_model_access_key`) |
+| `SPACES_ACCESS_ID` | secret | Terraform Apply | Spaces key ID for the state backend (`AWS_ACCESS_KEY_ID`) |
+| `SPACES_SECRET_KEY` | secret | Terraform Apply | Spaces secret for the state backend (`AWS_SECRET_ACCESS_KEY`) |
+| `DOKKU_SSH_PRIVATE_KEY` | secret | Deploy | `terraform output -raw dokku_deploy_private_key` |
+| `DOKKU_KNOWN_HOSTS` | secret | Deploy | `terraform output -raw dokku_ssh_known_hosts` |
+| `DOKKU_HOST` | variable | Deploy | `terraform output -raw reserved_ip` |
+
 ## Terraform variables
 
 | Variable | Default | Description |
@@ -79,6 +141,14 @@ To remove the trial, follow the docstring at the top of `chat-ui/trial.py`.
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
 | `region` | `nyc3` | DigitalOcean region for App Platform resources |
 | `app_instance_size` | `apps-s-1vcpu-1gb` | App Platform instance size slug |
+| `domain` | `evenbreak-cv.businesstime.team` | Domain the droplet serves the chat UI on (its A record is added by hand) |
+| `letsencrypt_email` | *(required)* | Contact email for Let's Encrypt. Set it in `deploy/terraform.tfvars` |
+| `admin_ssh_public_keys` | *(required)* | SSH public keys allowed to log in to the droplet as root. Set them in `deploy/terraform.tfvars` |
+| `droplet_region` | `lon1` | Region for the droplet and its reserved IP |
+| `droplet_size` | `s-1vcpu-2gb` | Droplet size (2GB RAM, because Dokku builds the image on the droplet) |
+| `droplet_image` | `ubuntu-24-04-x64` | Droplet image |
+| `dokku_version` | `v0.38.32` | Dokku release installed by cloud-init |
+| `dokku_letsencrypt_version` | `0.25.2` | dokku-letsencrypt plugin release installed by cloud-init |
 
 The app's env is not in `ignore_changes`, so every `terraform apply` redeploys
 the app (the secret always looks like drift). That is expected: document changes
@@ -97,9 +167,13 @@ credentials from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (CI: the
 | `app_url` | URL of the deployed chat UI application |
 | `project_id` | Project ID containing all resources |
 | `app_platform_id` | App Platform resource ID |
+| `reserved_ip` | The droplet's reserved IP: the domain's A record and `DOKKU_HOST` |
+| `dokku_ssh_known_hosts` | `known_hosts` line for the droplet's SSH host key: the `DOKKU_KNOWN_HOSTS` secret |
+| `dokku_deploy_private_key` | *(sensitive)* Deploy key for pushing to Dokku: the `DOKKU_SSH_PRIVATE_KEY` secret |
 
 ## Stack details
 
+- **Droplet region**: `lon1`, via the `droplet_region` variable.
 - **App Platform region**: Configurable via the `region` variable (default `nyc3`).
 - **Inference**: Serverless — no GPU instances to manage.
 - **Resource naming**: All resources are suffixed with a random 4-character string to avoid naming collisions.
@@ -224,6 +298,9 @@ Scraper tests: `docker compose run --rm --entrypoint python scrape -m pytest tes
   canned reply, and if the check itself fails twice it fails closed and the message is refused.
 - `HISTORY_SIGNING_KEY` is generated by Terraform, held in state and injected as a `SECRET`
   env var; rotating it invalidates conversations in progress.
+- On the droplet, the model access key and `HISTORY_SIGNING_KEY` are set as Dokku config by
+  cloud-init and are also in the droplet's user data and Terraform state. The deploy workflow
+  checks the server's host key against the `DOKKU_KNOWN_HOSTS` secret (never `ssh-keyscan`).
 - A merge to `main` triggers both App Platform's deploy-on-push and the CI Terraform apply. If the
   push build runs before the apply has added `HISTORY_SIGNING_KEY`, that deployment fails to start,
   App Platform keeps the previous one running, and the apply's redeploy fixes it.

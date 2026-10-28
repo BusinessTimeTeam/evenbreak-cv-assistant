@@ -1,0 +1,122 @@
+name: Deploy
+
+# Deploys the chat UI to the Dokku droplet (deploy/droplet.tf) by pushing main
+# to ssh://dokku@$DOKKU_HOST:22/chat-ui. Dokku builds chat-ui/Dockerfile,
+# including the knowledge-base index, and switches traffic once the
+# chat-ui/app.json healthcheck passes.
+#
+# Runs on every push to main, on manual runs, and after every Terraform apply
+# (terraform-apply.yml starts it with `gh workflow run`; workflow_dispatch
+# runs are created even when started with the GITHUB_TOKEN).
+#
+# Departure from the spec: the spec has this workflow and terraform-apply.yml
+# share one concurrency group. GitHub keeps only one pending run per group and
+# replaces it with any newer one, which could silently drop a queued Terraform
+# apply. Instead:
+#   - deploys wait (up to 20 minutes) until the server is ready
+#   - every Terraform apply triggers a deploy when it finishes
+#   - so a deploy that happens to hit a droplet being replaced is followed by
+#     that triggered deploy
+# Deploys have their own group, queued and never cancelled; if a newer deploy
+# replaces a pending one, the newer one pushes the newer main anyway.
+#
+# Repo settings it needs (see README, "Setting up a new server"):
+#   vars.DOKKU_HOST               terraform output -raw reserved_ip
+#   secrets.DOKKU_SSH_PRIVATE_KEY terraform output -raw dokku_deploy_private_key
+#   secrets.DOKKU_KNOWN_HOSTS     terraform output -raw dokku_ssh_known_hosts
+# The host key comes from the secret, never from ssh-keyscan, and host key
+# checking stays on.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # manual runs, and the run terraform-apply.yml starts
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy to Dokku
+    # Only main is deployed (Dokku's deploy branch), even on a manual run.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # 20 minutes waiting for the server, plus the build on the droplet.
+    timeout-minutes: 45
+    env:
+      DOKKU_HOST: ${{ vars.DOKKU_HOST }}
+    steps:
+      # Dokku needs full history: pushing from a shallow clone fails.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up SSH
+        env:
+          DOKKU_SSH_PRIVATE_KEY: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
+          DOKKU_KNOWN_HOSTS: ${{ secrets.DOKKU_KNOWN_HOSTS }}
+        run: |
+          # Fail early rather than fall back to anything less safe: an empty
+          # host key would make the deploy action run ssh-keyscan.
+          missing=""
+          [ -n "$DOKKU_HOST" ] || missing="$missing vars.DOKKU_HOST"
+          [ -n "$DOKKU_SSH_PRIVATE_KEY" ] || missing="$missing secrets.DOKKU_SSH_PRIVATE_KEY"
+          [ -n "$DOKKU_KNOWN_HOSTS" ] || missing="$missing secrets.DOKKU_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "::error title=Deploy not configured::Missing repo settings:$missing. See README, Setting up a new server."
+            exit 1
+          fi
+
+          install -d -m 700 ~/.ssh
+          (umask 077 && printf '%s\n' "$DOKKU_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519)
+          (umask 077 && printf '%s\n' "$DOKKU_KNOWN_HOSTS" > ~/.ssh/known_hosts)
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host *
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            BatchMode yes
+            ConnectTimeout 10
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      # cloud-init adds the deploy key to Dokku as its last step, so this
+      # succeeding means a new droplet has finished setting up.
+      - name: Wait for the server to be ready
+        run: |
+          deadline=$((SECONDS + 20 * 60))
+          until ssh "dokku@$DOKKU_HOST" apps:exists chat-ui > /dev/null; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error title=Server not ready::ssh dokku@$DOKKU_HOST apps:exists chat-ui still failing after 20 minutes."
+              exit 1
+            fi
+            echo "Server not ready yet; retrying in 15s."
+            sleep 15
+          done
+          echo "Server ready."
+
+      - name: Deploy
+        uses: dokku/github-action@v1.10.0
+        with:
+          git_remote_url: ssh://dokku@${{ vars.DOKKU_HOST }}:22/chat-ui
+          branch: main
+          ssh_private_key: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
+          ssh_host_key: ${{ secrets.DOKKU_KNOWN_HOSTS }}
+
+      # Fails until the domain's A record points at the reserved IP, so it
+      # warns instead of failing the deploy. letsencrypt:active exits 0 either
+      # way and prints true or false, so its output is compared.
+      - name: Enable HTTPS (Let's Encrypt)
+        run: |
+          if [ "$(ssh "dokku@$DOKKU_HOST" letsencrypt:active chat-ui)" = "true" ]; then
+            echo "Let's Encrypt certificate already active."
+            exit 0
+          fi
+          if ! ssh "dokku@$DOKKU_HOST" letsencrypt:enable chat-ui; then
+            echo "::warning title=HTTPS not enabled::letsencrypt:enable chat-ui failed. Check the domain's A record points at $DOKKU_HOST; the next deploy tries again."
+          fi
