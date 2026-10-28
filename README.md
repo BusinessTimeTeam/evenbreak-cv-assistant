@@ -40,7 +40,6 @@ The query flow works as follows:
 |---|---|---|
 | `do_token` | *(required)* | DigitalOcean API token |
 | `model_access_key` | *(required)* | DO model access key the chat UI uses for serverless inference, at build time (embedding the knowledge base) and run time (chat). Supply via `TF_VAR_model_access_key` (CI: the `MODEL_ACCESS_KEY` repo secret) |
-| `spaces_access_id` / `spaces_secret_key` | `""` | Spaces credentials, for the documents bucket and the state backend |
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
 | `basename` | `rag-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
@@ -52,8 +51,10 @@ the app (the secret always looks like drift). That is expected: document changes
 need a redeploy anyway to rebuild the index. After a deploy, the App Platform
 build log shows the `index` stage embedding the documents (`Indexed N chunks ...`).
 
-The Spaces bucket still receives a copy of `knowledge-base/data-sources/`, but
-nothing reads it any more; it goes when the infrastructure is rebuilt.
+Terraform state lives in the `evenbreak-cv-assistant-tfstate` Spaces bucket,
+managed outside Terraform (see `deploy/backend.tf`). The state backend reads its
+credentials from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (CI: the
+`SPACES_ACCESS_ID` / `SPACES_SECRET_KEY` repo secrets).
 
 ## Terraform outputs
 

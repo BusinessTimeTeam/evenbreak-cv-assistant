@@ -1,7 +1,8 @@
 name: Terraform Apply
 
-# Applies the deploy/ Terraform stack on every push to main that touches infra
-# or knowledge-base content. State lives in the DO Spaces s3 backend, so CI works
+# Applies the deploy/ Terraform stack on every push to main that touches infra.
+# (Document changes need no apply: App Platform rebuilds the app, and its index,
+# on every push.) State lives in the DO Spaces s3 backend, so CI works
 # against the same state as local runs.
 
 on:
@@ -9,7 +10,6 @@ on:
     branches: [main]
     paths:
       - "deploy/**"
-      - "knowledge-base/**"
       - ".github/workflows/terraform-apply.yml"
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
@@ -32,11 +32,9 @@ jobs:
     env:
       # DigitalOcean provider + app auth.
       TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
-      TF_VAR_spaces_access_id: ${{ secrets.SPACES_ACCESS_ID }}
-      TF_VAR_spaces_secret_key: ${{ secrets.SPACES_SECRET_KEY }}
       # Model access key the chat UI uses for serverless inference (build + run).
       TF_VAR_model_access_key: ${{ secrets.MODEL_ACCESS_KEY }}
-      # s3 state backend auth (the same DigitalOcean Spaces key).
+      # s3 state backend auth (a DigitalOcean Spaces key).
       AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
     steps:

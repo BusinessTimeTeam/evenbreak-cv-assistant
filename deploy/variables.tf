@@ -14,25 +14,6 @@ variable "_api_host" {
   description = "DigitalOcean API endpoint (internal use)"
 }
 
-variable "spaces_access_id" {
-  type        = string
-  default     = ""
-  description = "DigitalOcean Spaces access key ID (S3-compatible). Required to manage the knowledge base documents bucket."
-  sensitive   = true
-}
-
-variable "spaces_secret_key" {
-  type        = string
-  default     = ""
-  description = "DigitalOcean Spaces secret key (S3-compatible). Required to manage the knowledge base documents bucket."
-  sensitive   = true
-}
-
-variable "spaces_region" {
-  type        = string
-  default     = "tor1"
-  description = "Region for the Spaces bucket holding knowledge base documents. Co-located with the knowledge base (tor1) by default."
-}
 
 // =============================================================================
 // PROJECT CONFIGURATION

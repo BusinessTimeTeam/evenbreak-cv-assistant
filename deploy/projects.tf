@@ -35,6 +35,5 @@ resource "digitalocean_project_resources" "project_resources" {
   project = local.active_project_id
   resources = [
     digitalocean_app.chat_ui.urn,
-    digitalocean_spaces_bucket.kb_docs.urn,
   ]
 }
