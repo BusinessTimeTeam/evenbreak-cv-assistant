@@ -453,6 +453,17 @@ def test_empty_history_with_a_session_needs_a_token(pipeline):
     assert resp.json()["expired"] is True
 
 
+def test_conversation_whose_model_left_the_trial_is_expired(pipeline):
+    # e.g. a model was commented out of trial.MODELS in a deploy mid-conversation.
+    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]
+
+    resp = _chat({"message": "Go on", **_signed(history, model="retired-model")})
+
+    assert resp.status_code == 400
+    assert resp.json() == {"error": main.EXPIRED_MESSAGE, "expired": True}
+    assert pipeline["chat"] == []
+
+
 def test_lost_cv_session_is_expired(pipeline):
     history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}]
 

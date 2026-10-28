@@ -215,12 +215,13 @@ async def chat_endpoint(request: Request):
     session_id = body.get("session_id")
     total = body.get("total_microusd", 0)
 
-    model = _find_model(body.get("model"))
-    if model is None:
-        return JSONResponse(status_code=400, content={"error": UNKNOWN_MODEL_MESSAGE})
+    model_id = body.get("model")
 
     expired = JSONResponse(status_code=400, content={"error": EXPIRED_MESSAGE, "expired": True})
     if received == [] and history_token is None and session_id is None:
+        model = _find_model(model_id)
+        if model is None:
+            return JSONResponse(status_code=400, content={"error": UNKNOWN_MODEL_MESSAGE})
         session_id = f"{QA_SESSION_PREFIX}{uuid.uuid4()}"
         total = 0
     else:
@@ -231,7 +232,7 @@ async def chat_endpoint(request: Request):
                 received,
                 session_id,
                 history_token,
-                model=model.id,
+                model=model_id,
                 total_microusd=total,
             )
         except HistoryTokenError as exc:
@@ -239,6 +240,11 @@ async def chat_endpoint(request: Request):
             return expired
         if not session_id.startswith(QA_SESSION_PREFIX) and session_id not in _cv_sessions:
             logger.info("Rejected chat history: CV session no longer held")
+            return expired
+        model = _find_model(model_id)
+        if model is None:
+            # The conversation's model has left the trial since it started.
+            logger.info("Rejected chat history: model no longer in the trial")
             return expired
 
     history = [
