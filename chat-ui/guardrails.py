@@ -59,6 +59,11 @@ REPLIES = {
     "check_failed": "Sorry, something went wrong on our side. Please try sending that again.",
     "not_a_cv": "That file doesn't look like a CV. Please upload your CV as a PDF or Word document.",
     "cv_injection": "That file contains text we can't accept. Please upload a plain copy of your CV.",
+    "cv_check_failed": "Sorry, something went wrong on our side. Please try uploading your CV again.",
+    "cv_unreadable": (
+        "We couldn't read any text in that file. If it's a scan or a photo, please upload "
+        "a Word version or a PDF saved from your word processor."
+    ),
 }
 
 _MESSAGE_INSTRUCTION = (

@@ -6,7 +6,8 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.106.0"
     }
-    # Used by random_string.suffix for fresh-deployment resource names.
+    # Used by random_string.suffix (fresh-deployment resource names) and
+    # random_password.history_signing_key.
     random = {
       source  = "hashicorp/random"
       version = "~> 3.9"

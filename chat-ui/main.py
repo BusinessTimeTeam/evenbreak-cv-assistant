@@ -244,6 +244,9 @@ async def upload(
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
+    if not cv_text.strip():
+        return JSONResponse(status_code=400, content={"error": REPLIES["cv_unreadable"]})
+
     try:
         verdict = await check_cv(_config, cv_text)
     except Exception as exc:
@@ -251,7 +254,9 @@ async def upload(
         verdict = Verdict(False, "check_failed")
     if not verdict.allowed:
         logger.info("Rejected CV upload: reason=%s length=%d", verdict.reason, len(cv_text))
-        key = "cv_injection" if verdict.reason == "injection" else verdict.reason
+        key = {"injection": "cv_injection", "check_failed": "cv_check_failed"}.get(
+            verdict.reason, verdict.reason
+        )
         return JSONResponse(status_code=400, content={"error": REPLIES[key]})
 
     # Upload starts a fresh CV conversation. The first model call is made only

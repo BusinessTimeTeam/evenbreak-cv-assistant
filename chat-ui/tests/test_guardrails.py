@@ -237,7 +237,15 @@ def test_check_cv_does_not_log_cv_text(monkeypatch, caplog):
 
 
 def test_replies_cover_every_reason():
-    assert set(REPLIES) == {"off_topic", "injection", "check_failed", "not_a_cv", "cv_injection"}
+    assert set(REPLIES) == {
+        "off_topic",
+        "injection",
+        "check_failed",
+        "not_a_cv",
+        "cv_injection",
+        "cv_check_failed",
+        "cv_unreadable",
+    }
 
 
 def test_check_message_does_not_log_inference_error_text(monkeypatch, caplog):

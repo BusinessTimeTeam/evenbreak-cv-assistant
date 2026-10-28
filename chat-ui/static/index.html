@@ -299,6 +299,7 @@
             }
 
             async function sendMessage() {
+                if (sendBtn.disabled) return;
                 const message = textarea.value.trim();
                 if (!message) return;
 
@@ -331,10 +332,19 @@
 
                     typingEl.remove();
                     appendMessage("assistant", content, isError);
+                    if (data.blocked === "check_failed") {
+                        // Let the user resend what they typed.
+                        textarea.value = message;
+                    }
                     if (data.expired) {
                         // Start the conversation again but keep the CV session.
                         history = [];
                         historyToken = null;
+                        chatInner
+                            .querySelectorAll(".message")
+                            .forEach((element) => element.remove());
+                        appendMessage("assistant", data.error, true);
+                        textarea.value = message;
                     } else if (data.history) {
                         history = data.history;
                         historyToken = data.history_token;

@@ -149,7 +149,25 @@ def test_upload_check_failure_rejects(client):
     resp = _upload(client, "Ada Lovelace")
 
     assert resp.status_code == 400
-    assert resp.json()["error"] == REPLIES["check_failed"]
+    assert resp.json()["error"] == REPLIES["cv_check_failed"]
+    assert main._cv_sessions == {}
+
+
+def test_upload_blank_text_is_rejected_without_classifier(client, monkeypatch):
+    calls = []
+
+    async def spy_check_cv(config, text):
+        calls.append(text)
+        return ALLOWED
+
+    monkeypatch.setattr(main, "check_cv", spy_check_cv)
+    monkeypatch.setattr(main, "extract_text", lambda filename, data: "  \n ")
+
+    resp = _upload(client, "ignored")
+
+    assert resp.status_code == 400
+    assert resp.json()["error"] == REPLIES["cv_unreadable"]
+    assert calls == []
     assert main._cv_sessions == {}
 
 
