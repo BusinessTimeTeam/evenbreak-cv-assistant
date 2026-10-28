@@ -151,3 +151,8 @@ def test_upload_check_failure_rejects(client):
     assert resp.status_code == 400
     assert resp.json()["error"] == REPLIES["check_failed"]
     assert main._cv_sessions == {}
+
+
+def test_cv_message_marks_cv_as_document_to_read():
+    msg = main._cv_message({"filename": "cv.pdf", "text": "Ada Lovelace"})
+    assert "not instructions" in msg["content"]
