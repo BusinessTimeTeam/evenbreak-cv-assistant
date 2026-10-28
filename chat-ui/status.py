@@ -5,6 +5,7 @@ A thinking model can think for minutes before the first word of its answer. A
 seconds: each cycle it asks a small, fast model to summarise the thinking that
 arrived since the last line. If the summary fails, is too slow, is empty or repeats
 the last line, a generic phrase is used instead, so the line always changes on time.
+The first line is a generic phrase too when there is barely any thinking yet.
 
 The thinking is the user's CV and chat in disguise, so it is only ever sent to the
 summariser inside a delimited block, and the summary is cleaned so no link, markup
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 STATUS_INTERVAL_SECONDS = 5.0
 STATUS_MAX_CHARS = 80
+# Below this much thinking, the first line is a fallback phrase rather than a summary.
+MIN_FIRST_THINKING_CHARS = 40
 
 # Used when no summary is available. None of them says how close the reply is.
 FALLBACK_PHRASES = (
@@ -108,15 +111,19 @@ class StatusFeed:
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
         previous = ""
+        first = True
         while True:
             thinking, self._buffer = self._buffer, ""
             deadline = loop.time() + self._interval
             line = ""
-            try:
-                with trial.purpose("status"):
-                    line = await asyncio.wait_for(summarise(self._config, thinking, previous), self._interval)
-            except Exception as exc:  # a status line is never worth failing the reply for
-                logger.warning("Status summary failed (%s); using a fallback phrase", type(exc).__name__)
+            # The first cycle starts with the first thinking, often too little to summarise.
+            if not (first and len(thinking.strip()) < MIN_FIRST_THINKING_CHARS):
+                try:
+                    with trial.purpose("status"):
+                        line = await asyncio.wait_for(summarise(self._config, thinking, previous), self._interval)
+                except Exception as exc:  # a status line is never worth failing the reply for
+                    logger.warning("Status summary failed (%s); using a fallback phrase", type(exc).__name__)
+            first = False
             if not line or line == previous:
                 line = self._fallback(previous)
             await asyncio.sleep(max(0.0, deadline - loop.time()))

@@ -9,6 +9,8 @@ from inference import InferenceConfig, InferenceError
 from status import FALLBACK_PHRASES, StatusFeed, clean_status
 
 CONFIG = InferenceConfig(api_key="k")
+# Enough thinking for the first line to be summarised.
+NOTES = "The user wants help explaining a gap in their CV to employers."
 
 
 def _run_feed(summarise, adds=(), seconds=0.2, ledger=None):
@@ -84,8 +86,22 @@ def test_feed_emits_summaries_of_new_thinking(monkeypatch):
         return f"Line {len(seen)}"
 
     monkeypatch.setattr(status, "summarise", fake_summarise)
-    emitted = _run_feed(fake_summarise, adds=("a", "bc"))
-    assert emitted[:2] == ["Line 1", "Line 2"] and seen[0] == "abc"
+    emitted = _run_feed(fake_summarise, adds=(NOTES[:10], NOTES[10:]))
+    assert emitted[:2] == ["Line 1", "Line 2"] and seen[0] == NOTES
+
+
+def test_feed_first_line_is_a_fallback_when_there_is_little_thinking(monkeypatch):
+    seen = []
+
+    async def fake_summarise(config, new_thinking, previous):
+        seen.append(new_thinking)
+        return f"Line {len(seen)}"
+
+    monkeypatch.setattr(status, "summarise", fake_summarise)
+    emitted = _run_feed(fake_summarise, adds=("The user",))
+    assert emitted[0] in FALLBACK_PHRASES
+    # Only the first cycle is skipped; later ones are summarised however short.
+    assert seen[0] == "" and emitted[1] == "Line 1"
 
 
 def test_feed_never_repeats_a_line(monkeypatch):
@@ -124,5 +140,5 @@ def test_feed_summary_cost_lands_in_the_ledger_as_status(monkeypatch):
 
     monkeypatch.setattr(status, "summarise", fake_summarise)
     ledger = trial.Ledger()
-    _run_feed(fake_summarise, seconds=0.01, ledger=ledger)
+    _run_feed(fake_summarise, adds=(NOTES,), seconds=0.01, ledger=ledger)
     assert ledger.tokens("status") == (450, 50)
