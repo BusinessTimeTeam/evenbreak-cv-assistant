@@ -25,7 +25,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -35,6 +35,8 @@ from history_signing import HistoryTokenError, sign_history, verify_history
 from inference import InferenceConfig, InferenceError, chat, embed
 from prompting import build_messages, load_system_prompt, rewrite_queries
 from retrieval import Index, ScoredChunk
+import trial
+from trial import TrialModel
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger("chat-ui")
@@ -43,6 +45,9 @@ _config = InferenceConfig.from_env()
 SYSTEM_PROMPT = load_system_prompt()
 HISTORY_SIGNING_KEY = os.environ["HISTORY_SIGNING_KEY"].encode()
 EXPIRED_MESSAGE = "This conversation has expired. Please start a new one."
+UNKNOWN_MODEL_MESSAGE = "Unknown model."
+# Prefix of a Q&A conversation's session id; any other session id is a CV session.
+QA_SESSION_PREFIX = "qa-"
 RETRIEVAL_K = int(os.environ.get("RETRIEVAL_K", "10"))
 DEFAULT_INDEX_PATH = "/index/kb_index.npz"
 
@@ -107,6 +112,32 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/models")
+async def models():
+    """The models a conversation can be answered with, for the model trial picker."""
+    return trial.models_payload(_config.chat_model)
+
+
+def _find_model(model_id) -> TrialModel | None:
+    """The trial model the client asked for (the configured model if none), or None."""
+    if model_id is None:
+        model_id = _config.chat_model
+    return trial.find_model(model_id) if isinstance(model_id, str) else None
+
+
+def _conversation(history: list, session_id: str, model: TrialModel, total_microusd: int) -> dict:
+    """The conversation state returned on every turn, signed so the browser can't edit it."""
+    return {
+        "history": history,
+        "history_token": sign_history(
+            HISTORY_SIGNING_KEY, history, session_id, model=model.id, total_microusd=total_microusd
+        ),
+        "session_id": session_id,
+        "model": model.id,
+        "total_microusd": total_microusd,
+    }
+
+
 async def _retrieve(
     message: str, history: list[dict], cv: dict | None
 ) -> list[ScoredChunk]:
@@ -115,28 +146,33 @@ async def _retrieve(
     Raises InferenceError if embedding fails; query rewriting falls back to the
     raw message on its own.
     """
-    queries = await rewrite_queries(_config, message, history, cv["text"] if cv else None)
-    return _index.search(await embed(_config, queries), k=RETRIEVAL_K)
+    with trial.purpose("rewrite"):
+        queries = await rewrite_queries(_config, message, history, cv["text"] if cv else None)
+    with trial.purpose("embed"):
+        vectors = await embed(_config, queries)
+    return _index.search(vectors, k=RETRIEVAL_K)
 
 
 async def _check_message_safely(message: str, history: list[dict]):
     """Run the message check, failing closed on any unexpected exception."""
     try:
-        return await check_message(_config, message, history)
+        with trial.purpose("guard"):
+            return await check_message(_config, message, history)
     except Exception as exc:
         logger.warning("Message check crashed: %s", type(exc).__name__)
         return Verdict(False, "check_failed")
 
 
 async def _answer(
-    message: str, history: list[dict], cv: dict | None
+    message: str, history: list[dict], cv: dict | None, model: TrialModel
 ) -> tuple[str, list[ScoredChunk], str | None]:
-    """Check the message, retrieve passages and ask the chat model.
+    """Check the message, retrieve passages and ask the conversation's model.
 
     The check and retrieval run together. Returns ``(content, passages,
     blocked_reason)``; a blocked message gets a canned reply and never reaches
     the chat model. Raises InferenceError if retrieval or the chat call fails
-    for an allowed message.
+    for an allowed message. Only the answer uses ``model``; the check and query
+    rewriting use the configured chat model.
     """
     verdict, passages = await asyncio.gather(
         _check_message_safely(message, history),
@@ -152,7 +188,9 @@ async def _answer(
     messages = build_messages(
         SYSTEM_PROMPT, _cv_message(cv) if cv else None, passages, history, message
     )
-    return await chat(_config, messages), passages, None
+    with trial.purpose("reply"):
+        content = await chat(_config, messages, model=model.id, params=model.params)
+    return content, passages, None
 
 
 @app.post("/api/chat")
@@ -163,44 +201,63 @@ async def chat_endpoint(request: Request):
     on every turn so the model can reason about it. ``sources`` lists the
     retrieved knowledge-base files (the UI ignores it; the comparison uses it).
 
-    The browser sends back the history and ``history_token`` from the previous
-    response; history that fails verification is rejected with a 400. The
-    response carries the updated history and a fresh token.
+    A request with no history, token or session id starts a Q&A conversation
+    with the requested model. Otherwise the browser sends back the conversation
+    state from the previous response (history, ``history_token``, session id,
+    model and running total); state that fails verification, or a CV session the
+    server no longer holds, is rejected with a 400. Every response carries the
+    new state, including the cost of blocked and failed turns.
     """
     body = await request.json()
     message = body.get("message", "")
     received = body.get("history", [])
     history_token = body.get("history_token")
     session_id = body.get("session_id")
+    total = body.get("total_microusd", 0)
 
-    # Verify the history exactly as received, before anything reads it.
-    try:
-        verify_history(HISTORY_SIGNING_KEY, received, session_id, history_token)
-    except HistoryTokenError as exc:
-        logger.info("Rejected chat history: %s", exc)
-        return JSONResponse(
-            status_code=400, content={"error": EXPIRED_MESSAGE, "expired": True}
-        )
+    model = _find_model(body.get("model"))
+    if model is None:
+        return JSONResponse(status_code=400, content={"error": UNKNOWN_MODEL_MESSAGE})
+
+    expired = JSONResponse(status_code=400, content={"error": EXPIRED_MESSAGE, "expired": True})
+    if received == [] and history_token is None and session_id is None:
+        session_id = f"{QA_SESSION_PREFIX}{uuid.uuid4()}"
+        total = 0
+    else:
+        # Verify the state exactly as received, before anything reads it.
+        try:
+            verify_history(
+                HISTORY_SIGNING_KEY,
+                received,
+                session_id,
+                history_token,
+                model=model.id,
+                total_microusd=total,
+            )
+        except HistoryTokenError as exc:
+            logger.info("Rejected chat history: %s", exc)
+            return expired
+        if not session_id.startswith(QA_SESSION_PREFIX) and session_id not in _cv_sessions:
+            logger.info("Rejected chat history: CV session no longer held")
+            return expired
 
     history = [
         {"role": h.get("role", "user"), "content": h.get("content", "")} for h in received
     ]
-    cv = _cv_sessions.get(session_id) if session_id else None
+    cv = _cv_sessions.get(session_id)
 
-    try:
-        content, passages, blocked = await _answer(message, history, cv)
-    except InferenceError as exc:
-        logger.warning("Chat turn failed: %s", exc)
-        # The failed turn isn't added, so the browser keeps its verified history.
-        return JSONResponse(
-            content={
-                "content": f"Error: {exc}",
-                "sources": [],
-                "blocked": None,
-                "history": received,
-                "history_token": history_token,
-            }
-        )
+    ledger = trial.Ledger()
+    with trial.recording(ledger):
+        try:
+            content, passages, blocked = await _answer(message, history, cv, model)
+            outcome = "blocked" if blocked else "answered"
+        except InferenceError as exc:
+            logger.warning("Chat turn failed: %s", exc)
+            content, passages, blocked = f"Error: {exc}", [], None
+            outcome = "error"
+    total += ledger.microusd()
+    logger.info(trial.cost_log_line("chat", outcome, session_id, model.id, ledger, total))
+
     if blocked:
         logger.info(
             "Blocked chat message: reason=%s cv=%s length=%d",
@@ -208,26 +265,20 @@ async def chat_endpoint(request: Request):
             cv is not None,
             len(message),
         )
-        return JSONResponse(
-            content={
-                "content": content,
-                "sources": [],
-                "blocked": blocked,
-                "history": received,
-                "history_token": history_token,
-            }
-        )
-    updated = received + [
-        {"role": "user", "content": message},
-        {"role": "assistant", "content": content},
-    ]
+    if outcome == "answered":
+        updated = received + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": content},
+        ]
+    else:
+        # A blocked or failed turn isn't added, but its cost is.
+        updated = received
     return JSONResponse(
         content={
             "content": content,
             "sources": [{"source": p.source, "score": p.score} for p in passages],
-            "blocked": None,
-            "history": updated,
-            "history_token": sign_history(HISTORY_SIGNING_KEY, updated, session_id),
+            "blocked": blocked,
+            **_conversation(updated, session_id, model, total),
         }
     )
 
@@ -235,9 +286,16 @@ async def chat_endpoint(request: Request):
 @app.post("/api/upload")
 async def upload(
     file: UploadFile = File(...),
+    model: str | None = Form(None),
 ):
     """Accept an uploaded CV (PDF / Word), extract its text, store it against a
-    new session id, and return readiness metadata without calling the model."""
+    new session id, and return readiness metadata without calling the chat
+    model. The upload starts the conversation, so it fixes the conversation's
+    model and its running total starts with the cost of the CV check."""
+    trial_model = _find_model(model)
+    if trial_model is None:
+        return JSONResponse(status_code=400, content={"error": UNKNOWN_MODEL_MESSAGE})
+
     data = await file.read()
     try:
         cv_text = extract_text(file.filename or "", data)
@@ -247,13 +305,19 @@ async def upload(
     if not cv_text.strip():
         return JSONResponse(status_code=400, content={"error": REPLIES["cv_unreadable"]})
 
-    try:
-        verdict = await check_cv(_config, cv_text)
-    except Exception as exc:
-        logger.warning("CV check crashed: %s", type(exc).__name__)
-        verdict = Verdict(False, "check_failed")
+    ledger = trial.Ledger()
+    with trial.recording(ledger), trial.purpose("guard"):
+        try:
+            verdict = await check_cv(_config, cv_text)
+        except Exception as exc:
+            logger.warning("CV check crashed: %s", type(exc).__name__)
+            verdict = Verdict(False, "check_failed")
     if not verdict.allowed:
         logger.info("Rejected CV upload: reason=%s length=%d", verdict.reason, len(cv_text))
+        # A rejected upload isn't a conversation: its cost is logged, not carried.
+        logger.info(
+            trial.cost_log_line("upload", "rejected", None, trial_model.id, ledger, ledger.microusd())
+        )
         key = {"injection": "cv_injection", "check_failed": "cv_check_failed"}.get(
             verdict.reason, verdict.reason
         )
@@ -262,13 +326,17 @@ async def upload(
     # Upload starts a fresh CV conversation. The first model call is made only
     # after the user selects a suggested action or asks their own question.
     session_id = str(uuid.uuid4())
-    cv = {"filename": file.filename, "text": cv_text}
+    cv = {"filename": file.filename, "text": cv_text, "model": trial_model.id}
     _cv_sessions[session_id] = cv
+    total = ledger.microusd()
+    logger.info(trial.cost_log_line("upload", "accepted", session_id, trial_model.id, ledger, total))
 
+    conversation = _conversation([], session_id, trial_model, total)
+    del conversation["history"]
     return JSONResponse(
         content={
             "filename": file.filename,
-            "session_id": session_id,
             "status": "ready",
+            **conversation,
         }
     )

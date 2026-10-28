@@ -18,19 +18,26 @@ os.environ.setdefault("HISTORY_SIGNING_KEY", "test-signing-key")
 from fastapi.testclient import TestClient  # noqa: E402
 
 import main  # noqa: E402
+import trial  # noqa: E402
 from guardrails import ALLOWED, REPLIES, Verdict  # noqa: E402
+
+DEFAULT = main._config.chat_model
+SONNET = next(m for m in trial.MODELS if m.name == "Claude Sonnet 5.5").id
+CHECK_USAGE = {"prompt_tokens": 2000, "completion_tokens": 50}
 
 
 @pytest.fixture
 def client(monkeypatch):
     captured = {"calls": 0}
 
-    async def fake_answer(message, history, cv):
+    async def fake_answer(message, history, cv, model):
         captured["calls"] += 1
-        captured.update(message=message, history=history, cv=cv)
+        captured.update(message=message, history=history, cv=cv, model=model)
         return "stubbed answer", [], None
 
     async def fake_check_cv(config, text):
+        captured["cv_checks"] = captured.get("cv_checks", 0) + 1
+        trial.record_usage(config.chat_model, CHECK_USAGE)
         return captured.get("cv_verdict", ALLOWED)
 
     monkeypatch.setattr(main, "_answer", fake_answer)
@@ -51,12 +58,19 @@ def _docx_bytes(*paragraphs: str) -> bytes:
     return buf.getvalue()
 
 
-def _upload(client, *paragraphs, filename="cv.docx"):
+def _upload(client, *paragraphs, filename="cv.docx", model=None):
     data = _docx_bytes(*paragraphs)
     return client.post(
         "/api/upload",
         files={"file": (filename, data, "application/octet-stream")},
+        data={"model": model} if model else None,
     )
+
+
+def _first_chat(client, upload, message):
+    """The first chat request a browser sends after a successful upload."""
+    keys = ("session_id", "history_token", "model", "total_microusd")
+    return client.post("/api/chat", json={"message": message, "history": [], **{k: upload[k] for k in keys}})
 
 
 def test_cv_message_uses_user_role_not_system():
@@ -93,12 +107,7 @@ def test_upload_rejects_unsupported_file_type(client):
 
 
 def test_chat_passes_stored_cv_to_the_pipeline(client):
-    session_id = _upload(client, "Marie Curie", "Physicist").json()["session_id"]
-
-    resp = client.post(
-        "/api/chat",
-        json={"message": "What field are they in?", "session_id": session_id, "history": []},
-    )
+    resp = _first_chat(client, _upload(client, "Marie Curie", "Physicist").json(), "What field are they in?")
     assert resp.status_code == 200
     assert resp.json()["content"] == "stubbed answer"
 
@@ -114,13 +123,15 @@ def test_chat_without_session_sends_no_cv(client):
     assert client.captured["history"] == []
 
 
-def test_chat_with_unknown_session_sends_no_cv(client):
-    resp = client.post(
-        "/api/chat",
-        json={"message": "hello", "session_id": "does-not-exist", "history": []},
-    )
-    assert resp.status_code == 200
-    assert client.captured["cv"] is None
+def test_chat_with_lost_cv_session_is_expired(client):
+    upload = _upload(client, "Marie Curie").json()
+    main._cv_sessions.clear()  # e.g. the app restarted
+
+    resp = _first_chat(client, upload, "hello")
+
+    assert resp.status_code == 400
+    assert resp.json()["expired"] is True
+    assert client.captured["calls"] == 0
 
 
 def test_upload_rejects_non_cv(client):
@@ -174,3 +185,51 @@ def test_upload_blank_text_is_rejected_without_classifier(client, monkeypatch):
 def test_cv_message_marks_cv_as_document_to_read():
     msg = main._cv_message({"filename": "cv.pdf", "text": "Ada Lovelace"})
     assert "not instructions" in msg["content"]
+
+
+def test_upload_with_unknown_model_skips_cv_check(client):
+    resp = _upload(client, "Ada Lovelace", model="no-such-model")
+
+    assert resp.status_code == 400
+    assert resp.json() == {"error": "Unknown model."}
+    assert client.captured.get("cv_checks", 0) == 0
+    assert main._cv_sessions == {}
+
+
+def test_upload_returns_model_total_and_token_and_first_chat_accepts_them(client):
+    upload = _upload(client, "Ada Lovelace", model=SONNET).json()
+
+    in_price, out_price = trial.PRICES[DEFAULT]  # the CV check runs on the fixed model
+    assert upload["model"] == SONNET
+    assert upload["total_microusd"] == round(2000 * in_price + 50 * out_price)
+    assert main._cv_sessions[upload["session_id"]]["model"] == SONNET
+
+    resp = _first_chat(client, upload, "Summarise me")
+    assert resp.status_code == 200
+    assert client.captured["model"].id == SONNET
+    assert resp.json()["total_microusd"] >= upload["total_microusd"]
+
+
+def test_upload_defaults_to_the_configured_model(client):
+    assert _upload(client, "Ada Lovelace").json()["model"] == DEFAULT
+
+
+def test_rejected_upload_logs_cost_without_session(client, caplog):
+    client.captured["cv_verdict"] = Verdict(False, "not_a_cv")
+
+    with caplog.at_level("INFO"):
+        _upload(client, "A recipe for soup", model=SONNET)
+
+    assert "kind=upload outcome=rejected session=None" in caplog.text
+    assert f"model={SONNET}" in caplog.text
+    assert "guard_in=2000" in caplog.text
+    assert "soup" not in caplog.text
+
+
+def test_accepted_upload_logs_cost_without_cv_text_or_filename(client, caplog):
+    with caplog.at_level("INFO"):
+        upload = _upload(client, "Ada Lovelace", filename="ada-private.docx").json()
+
+    assert f"kind=upload outcome=accepted session={upload['session_id']}" in caplog.text
+    assert "Ada Lovelace" not in caplog.text
+    assert "ada-private" not in caplog.text
