@@ -1,11 +1,12 @@
 """Tests for the /api/upload endpoint and CV-aware /api/chat.
 
 Uploaded CVs are stored server-side keyed by a session id and handed to the
-answer pipeline on every chat turn. The pipeline (``main._answer``) is stubbed
+answer pipeline on every chat turn. The pipeline (``main._run_turn``) is stubbed
 so these tests stay offline; test_chat_pipeline.py covers the pipeline itself.
 """
 
 import io
+import json
 import os
 
 import pytest
@@ -30,17 +31,17 @@ CHECK_USAGE = {"prompt_tokens": 2000, "completion_tokens": 50}
 def client(monkeypatch):
     captured = {"calls": 0}
 
-    async def fake_answer(message, history, cv, model):
+    async def fake_run_turn(emit, *, message, received, session_id, cv, model, total):
         captured["calls"] += 1
-        captured.update(message=message, history=history, cv=cv, model=model)
-        return "stubbed answer", [], None
+        captured.update(message=message, history=received, cv=cv, model=model)
+        emit({"type": "done", "content": "stubbed answer", **main._conversation([], session_id, model, total)})
 
     async def fake_check_cv(config, text):
         captured["cv_checks"] = captured.get("cv_checks", 0) + 1
         trial.record_usage(config.chat_model, CHECK_USAGE)
         return captured.get("cv_verdict", ALLOWED)
 
-    monkeypatch.setattr(main, "_answer", fake_answer)
+    monkeypatch.setattr(main, "_run_turn", fake_run_turn)
     monkeypatch.setattr(main, "check_cv", fake_check_cv)
     # Start each test with an empty session store.
     main._cv_sessions.clear()
@@ -65,6 +66,11 @@ def _upload(client, *paragraphs, filename="cv.docx", model=None):
         files={"file": (filename, data, "application/octet-stream")},
         data={"model": model} if model else None,
     )
+
+
+def _final(resp) -> dict:
+    """The last event of a streamed chat response."""
+    return json.loads(resp.text.splitlines()[-1])
 
 
 def _first_chat(client, upload, message):
@@ -109,7 +115,7 @@ def test_upload_rejects_unsupported_file_type(client):
 def test_chat_passes_stored_cv_to_the_pipeline(client):
     resp = _first_chat(client, _upload(client, "Marie Curie", "Physicist").json(), "What field are they in?")
     assert resp.status_code == 200
-    assert resp.json()["content"] == "stubbed answer"
+    assert _final(resp)["content"] == "stubbed answer"
 
     assert "Marie Curie" in client.captured["cv"]["text"]
     assert client.captured["message"] == "What field are they in?"
@@ -207,7 +213,7 @@ def test_upload_returns_model_total_and_token_and_first_chat_accepts_them(client
     resp = _first_chat(client, upload, "Summarise me")
     assert resp.status_code == 200
     assert client.captured["model"].id == PREMIUM
-    assert resp.json()["total_microusd"] >= upload["total_microusd"]
+    assert _final(resp)["total_microusd"] >= upload["total_microusd"]
 
 
 def test_upload_defaults_to_the_configured_model(client):

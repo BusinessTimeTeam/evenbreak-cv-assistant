@@ -2,9 +2,12 @@
 using Evenbreak's knowledge base and DigitalOcean serverless inference, and
 serves a simple web interface.
 
-Each chat turn: rewrite the conversation into search queries, embed them,
-search the in-memory knowledge-base index, then send the system prompt, CV,
-retrieved passages, history and message to the chat model.
+Each chat turn: check the message while rewriting the conversation into search
+queries, embedding them and searching the in-memory knowledge-base index, then
+stream the system prompt, CV, retrieved passages, history and message to the
+chat model. The reply reaches the browser as newline-delimited JSON events: a
+status line every few seconds while the model thinks, the answer piece by
+piece, then a final event carrying the new conversation state.
 
 Environment variables (injected by terraform via App Platform, or from .env
 locally):
@@ -18,23 +21,26 @@ locally):
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
 import uuid
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from extraction import extract_text
 from guardrails import REPLIES, Verdict, check_cv, check_message
 from history_signing import HistoryTokenError, sign_history, verify_history
-from inference import InferenceConfig, InferenceError, chat, embed
+from inference import InferenceConfig, InferenceError, chat_stream, embed
 from prompting import build_messages, load_system_prompt, rewrite_queries
 from retrieval import Index, ScoredChunk
+from status import STATUS_INTERVAL_SECONDS, StatusFeed
 import trial
 from trial import TrialModel
 
@@ -46,6 +52,11 @@ SYSTEM_PROMPT = load_system_prompt()
 HISTORY_SIGNING_KEY = os.environ["HISTORY_SIGNING_KEY"].encode()
 EXPIRED_MESSAGE = "This conversation has expired. Please start a new one."
 UNKNOWN_MODEL_MESSAGE = "Unknown model."
+REPLY_FAILED_MESSAGE = (
+    "Sorry, something went wrong while writing that reply. Please try sending your message again."
+)
+# Thinking models spend much of this on thinking before the answer starts.
+REPLY_MAX_TOKENS = 32768
 # Prefix of a Q&A conversation's session id; any other session id is a CV session.
 QA_SESSION_PREFIX = "qa-"
 RETRIEVAL_K = int(os.environ.get("RETRIEVAL_K", "10"))
@@ -78,9 +89,9 @@ INDEX_HTML_PATH = STATIC_DIR / "index.html"
 # re-injected as a stable leading message on every model call (the model is
 # stateless and has no memory of its own).
 #
-# NOTE: this is an in-process dict. It is fine for the current single-instance
-# App Platform deployment, but is lost on restart and not shared across
-# instances. Move it to a shared store (e.g. Redis/Spaces) if the app scales out.
+# NOTE: this is an in-process dict. It is fine for the current single Dokku
+# instance, but is lost on restart and not shared across instances. Move it to a
+# shared store (e.g. Redis/Spaces) if the app scales out.
 _cv_sessions: dict[str, dict] = {}
 
 
@@ -163,16 +174,13 @@ async def _check_message_safely(message: str, history: list[dict]):
         return Verdict(False, "check_failed")
 
 
-async def _answer(
-    message: str, history: list[dict], cv: dict | None, model: TrialModel
-) -> tuple[str, list[ScoredChunk], str | None]:
-    """Check the message, retrieve passages and ask the conversation's model.
+async def _check_and_retrieve(
+    message: str, history: list[dict], cv: dict | None
+) -> tuple[str | None, list[ScoredChunk]]:
+    """Check the message and retrieve passages for it, together.
 
-    The check and retrieval run together. Returns ``(content, passages,
-    blocked_reason)``; a blocked message gets a canned reply and never reaches
-    the chat model. Raises InferenceError if retrieval or the chat call fails
-    for an allowed message. Only the answer uses ``model``; the check and query
-    rewriting use the configured chat model.
+    Returns ``(blocked_reason, passages)``; a blocked message gets no passages.
+    Raises InferenceError if retrieval fails for an allowed message.
     """
     verdict, passages = await asyncio.gather(
         _check_message_safely(message, history),
@@ -182,31 +190,142 @@ async def _answer(
     if isinstance(verdict, BaseException):
         raise verdict
     if not verdict.allowed:
-        return REPLIES[verdict.reason], [], verdict.reason
+        return verdict.reason, []
     if isinstance(passages, BaseException):
         raise passages
-    messages = build_messages(
-        SYSTEM_PROMPT, _cv_message(cv) if cv else None, passages, history, message
+    return None, passages
+
+
+async def _run_turn(
+    emit: Callable[[dict], None],
+    *,
+    message: str,
+    received: list,
+    session_id: str,
+    cv: dict | None,
+    model: TrialModel,
+    total: int,
+) -> None:
+    """Answer one chat message, emitting its events, and log what it cost.
+
+    Emits ``status`` lines while the model thinks, each ``answer`` piece, and
+    finally ``done`` (with the new conversation state) or ``error`` (with the
+    state unchanged but the turn's cost added). A blocked message gets only a
+    ``done`` with a canned reply and never reaches the chat model. Only the
+    reply uses ``model``; the check and query rewriting use the configured chat
+    model. If the turn is cancelled (the browser left), the reply and status
+    calls stop and the turn is logged as abandoned.
+    """
+    history = [
+        {"role": h.get("role", "user"), "content": h.get("content", "")} for h in received
+    ]
+    ledger = trial.Ledger()
+    feed_task: asyncio.Task | None = None
+    with trial.recording(ledger):
+        try:
+            blocked, passages = await _check_and_retrieve(message, history, cv)
+            if blocked:
+                content = REPLIES[blocked]
+            else:
+                messages = build_messages(
+                    SYSTEM_PROMPT, _cv_message(cv) if cv else None, passages, history, message
+                )
+                feed = StatusFeed(
+                    _config,
+                    lambda text: emit({"type": "status", "text": text}),
+                    interval=STATUS_INTERVAL_SECONDS,
+                )
+                pieces = []
+                with trial.purpose("reply"):
+                    async for delta in chat_stream(
+                        _config,
+                        messages,
+                        model=model.id,
+                        params=model.params,
+                        max_tokens=REPLY_MAX_TOKENS,
+                    ):
+                        if delta.kind == "thinking":
+                            if feed_task is None and not pieces:
+                                feed_task = asyncio.create_task(feed.run())
+                            feed.add_thinking(delta.text)
+                        else:
+                            if feed_task is not None:
+                                feed_task.cancel()
+                            pieces.append(delta.text)
+                            emit({"type": "answer", "text": delta.text})
+                content = "".join(pieces)
+            outcome = "blocked" if blocked else "answered"
+        except asyncio.CancelledError:
+            total += ledger.microusd()
+            logger.info(trial.cost_log_line("chat", "abandoned", session_id, model.id, ledger, total))
+            raise
+        except InferenceError as exc:
+            logger.warning("Chat turn failed: %s", exc)
+            outcome = "error"
+        except Exception as exc:
+            logger.warning("Chat turn crashed: %s", type(exc).__name__)
+            outcome = "error"
+        finally:
+            if feed_task is not None:
+                feed_task.cancel()
+    total += ledger.microusd()
+    logger.info(trial.cost_log_line("chat", outcome, session_id, model.id, ledger, total))
+
+    if outcome == "error":
+        # A failed turn isn't added, but its cost is.
+        emit(
+            {
+                "type": "error",
+                "error": REPLY_FAILED_MESSAGE,
+                **_conversation(received, session_id, model, total),
+            }
+        )
+        return
+    if blocked:
+        logger.info(
+            "Blocked chat message: reason=%s cv=%s length=%d",
+            blocked,
+            cv is not None,
+            len(message),
+        )
+        # A blocked turn isn't added either.
+        updated = received
+    else:
+        updated = received + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": content},
+        ]
+    emit(
+        {
+            "type": "done",
+            "content": content,
+            "blocked": blocked,
+            "sources": [{"source": p.source, "score": p.score} for p in passages],
+            **_conversation(updated, session_id, model, total),
+        }
     )
-    with trial.purpose("reply"):
-        content = await chat(_config, messages, model=model.id, params=model.params)
-    return content, passages, None
 
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
-    """Answer a chat message from the knowledge base and return the reply.
+    """Answer a chat message from the knowledge base as a stream of events.
+
+    The response is newline-delimited JSON (see ``_run_turn``): ``status`` and
+    ``answer`` events, ending with ``done`` or ``error``. Rejected requests get
+    a JSON 400 instead.
 
     If the request carries a session id with a stored CV, that CV is included
     on every turn so the model can reason about it. ``sources`` lists the
-    retrieved knowledge-base files (the UI ignores it; the comparison uses it).
+    retrieved knowledge-base files on ``done`` (the UI ignores it; the
+    comparison uses it).
 
     A request with no history, token or session id starts a Q&A conversation
     with the requested model. Otherwise the browser sends back the conversation
     state from the previous response (history, ``history_token``, session id,
     model and running total); state that fails verification, or a CV session the
-    server no longer holds, is rejected with a 400. Every response carries the
-    new state, including the cost of blocked and failed turns.
+    server no longer holds, is rejected with a 400. The final event carries
+    the new state, including the cost of blocked and failed turns. If the
+    browser disconnects, the turn is cancelled.
     """
     body = await request.json()
     message = body.get("message", "")
@@ -247,45 +366,36 @@ async def chat_endpoint(request: Request):
             logger.info("Rejected chat history: model no longer in the trial")
             return expired
 
-    history = [
-        {"role": h.get("role", "user"), "content": h.get("content", "")} for h in received
-    ]
     cv = _cv_sessions.get(session_id)
 
-    ledger = trial.Ledger()
-    with trial.recording(ledger):
-        try:
-            content, passages, blocked = await _answer(message, history, cv, model)
-            outcome = "blocked" if blocked else "answered"
-        except InferenceError as exc:
-            logger.warning("Chat turn failed: %s", exc)
-            content, passages, blocked = f"Error: {exc}", [], None
-            outcome = "error"
-    total += ledger.microusd()
-    logger.info(trial.cost_log_line("chat", outcome, session_id, model.id, ledger, total))
-
-    if blocked:
-        logger.info(
-            "Blocked chat message: reason=%s cv=%s length=%d",
-            blocked,
-            cv is not None,
-            len(message),
+    async def events():
+        queue: asyncio.Queue[dict] = asyncio.Queue()
+        task = asyncio.create_task(
+            _run_turn(
+                queue.put_nowait,
+                message=message,
+                received=received,
+                session_id=session_id,
+                cv=cv,
+                model=model,
+                total=total,
+            )
         )
-    if outcome == "answered":
-        updated = received + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": content},
-        ]
-    else:
-        # A blocked or failed turn isn't added, but its cost is.
-        updated = received
-    return JSONResponse(
-        content={
-            "content": content,
-            "sources": [{"source": p.source, "score": p.score} for p in passages],
-            "blocked": blocked,
-            **_conversation(updated, session_id, model, total),
-        }
+        try:
+            while True:
+                event = await queue.get()
+                yield json.dumps(event) + "\n"
+                if event["type"] in ("done", "error"):
+                    break
+        finally:
+            # Starlette cancels this generator when the browser disconnects.
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
 
 
