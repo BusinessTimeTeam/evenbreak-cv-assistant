@@ -176,6 +176,7 @@
                     Press Enter to send, Shift+Enter for new line
                 </div>
             </form>
+            <p class="visually-hidden" id="replyAnnouncer" aria-live="polite"></p>
         </main>
 
         <footer class="site-footer">
@@ -288,6 +289,8 @@
 
             function backToStart() {
                 conversationGeneration += 1;
+                if (replyController) replyController.abort();
+                replyController = null;
                 sendBtn.disabled = false;
                 chatInner
                     .querySelectorAll(".message, .ready-panel")
@@ -376,6 +379,20 @@
                 textarea.focus();
             }
 
+            // Shown in the status line until the server sends its own. None
+            // of them claims progress, since nothing is known yet.
+            const localStatuses = [
+                "Reading your message…",
+                "Finding the right guidance…",
+                "Getting ready to answer…",
+                "Still working on it…",
+            ];
+            const connectionError =
+                "Connection error. Please try sending your message again.";
+            const replyAnnouncer = document.getElementById("replyAnnouncer");
+            // The in-flight reply's request, so backToStart() can cancel it.
+            let replyController = null;
+
             async function sendMessage() {
                 if (sendBtn.disabled) return;
                 const message = textarea.value.trim();
@@ -390,8 +407,11 @@
                 textarea.style.blockSize = "auto";
                 sendBtn.disabled = true;
 
-                const typingEl = appendTyping();
+                const reply = appendStatusMessage();
+                replyAnnouncer.textContent = "Working on your reply";
                 const generation = conversationGeneration;
+                const controller = new AbortController();
+                replyController = controller;
 
                 try {
                     const res = await fetch("/api/chat", {
@@ -406,45 +426,108 @@
                             model: conversationModel,
                             total_microusd: totalMicrousd,
                         }),
+                        signal: controller.signal,
                     });
-                    const data = await res.json();
-                    if (generation !== conversationGeneration) return;
-                    const content =
-                        data.content || data.error || "No response received.";
-                    const isError = !!data.error || res.status >= 400;
-
-                    typingEl.remove();
-                    appendMessage("assistant", content, isError);
-                    if (data.blocked === "check_failed") {
-                        // Let the user resend what they typed.
-                        textarea.value = message;
-                    }
-                    if (data.expired) {
-                        // The conversation (and its model and cost) can't
-                        // continue, so start a new one from the landing page.
-                        backToStart();
-                        showNotice(data.error);
-                    } else if (data.history) {
-                        history = data.history;
-                        historyToken = data.history_token;
-                        sessionId = data.session_id;
-                        // Model trial
-                        conversationModel = data.model;
-                        totalMicrousd = data.total_microusd;
-                        showCost();
+                    const contentType = res.headers.get("content-type") || "";
+                    if (!contentType.includes("application/x-ndjson")) {
+                        // A request the server refused before starting a turn.
+                        const data = await res.json();
+                        if (generation !== conversationGeneration) return;
+                        reply.remove();
+                        if (data.expired) {
+                            // The conversation (and its model and cost) can't
+                            // continue, so start a new one from the landing page.
+                            backToStart();
+                            showNotice(data.error);
+                            return;
+                        }
+                        appendMessage(
+                            "assistant",
+                            data.error || "No response received.",
+                            true,
+                        );
+                    } else {
+                        const last = await readReply(res, reply, generation);
+                        if (generation !== conversationGeneration) return;
+                        if (!last) {
+                            reply.remove();
+                            appendMessage("assistant", connectionError, true);
+                            textarea.value = message;
+                        } else if (last.type === "error") {
+                            reply.remove();
+                            appendMessage("assistant", last.error, true);
+                            textarea.value = message;
+                            applyTurnState(last);
+                        } else {
+                            if (last.blocked) {
+                                reply.remove();
+                                appendMessage("assistant", last.content);
+                            } else {
+                                reply.finish(last.content);
+                            }
+                            if (last.blocked === "check_failed") {
+                                // Let the user resend what they typed.
+                                textarea.value = message;
+                            }
+                            applyTurnState(last);
+                        }
                     }
                 } catch (err) {
+                    if (err.name === "AbortError") return;
                     if (generation !== conversationGeneration) return;
-                    typingEl.remove();
-                    appendMessage(
-                        "assistant",
-                        "Connection error: " + err.message,
-                        true,
-                    );
+                    reply.remove();
+                    appendMessage("assistant", connectionError, true);
+                    textarea.value = message;
+                } finally {
+                    reply.stop();
+                    if (replyController === controller) replyController = null;
                 }
 
                 sendBtn.disabled = false;
                 textarea.focus();
+            }
+
+            // Reads the reply's events, one JSON object per line, until `done`
+            // or `error`, which it returns. Returns null if the stream ends
+            // without either, or if the conversation was abandoned meanwhile.
+            async function readReply(res, reply, generation) {
+                const reader = res.body
+                    .pipeThrough(new TextDecoderStream())
+                    .getReader();
+                let buffer = "";
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) return null;
+                    buffer += value;
+                    let newline;
+                    while ((newline = buffer.indexOf("\n")) >= 0) {
+                        const line = buffer.slice(0, newline).trim();
+                        buffer = buffer.slice(newline + 1);
+                        if (!line) continue;
+                        const event = JSON.parse(line);
+                        if (generation !== conversationGeneration) return null;
+                        if (event.type === "status") {
+                            reply.setStatus(event.text);
+                        } else if (event.type === "answer") {
+                            if (!reply.answering) {
+                                replyAnnouncer.textContent = "Reply started";
+                            }
+                            reply.appendAnswer(event.text);
+                        } else if (event.type === "done" || event.type === "error") {
+                            return event;
+                        }
+                    }
+                }
+            }
+
+            function applyTurnState(data) {
+                history = data.history;
+                historyToken = data.history_token;
+                sessionId = data.session_id;
+                // Model trial
+                conversationModel = data.model;
+                totalMicrousd = data.total_microusd;
+                showCost();
             }
 
             const uploadForm = document.getElementById("uploadForm");
@@ -511,25 +594,10 @@
                 bubble.className =
                     "message__bubble" +
                     (isError ? " message__bubble--error" : "");
-                if (
-                    role === "assistant" &&
-                    !isError &&
-                    window.marked &&
-                    window.DOMPurify
-                ) {
-                    const rendered = marked.parse(text, {
-                        breaks: true,
-                        gfm: true,
-                    });
-                    bubble.classList.add("richtext");
-                    bubble.innerHTML = DOMPurify.sanitize(rendered);
-                    bubble.querySelectorAll("a").forEach((link) => {
-                        link.target = "_blank";
-                        link.rel = "noopener noreferrer";
-                    });
+                if (role === "assistant" && !isError) {
+                    renderMarkdown(bubble, text);
                 } else {
-                    // User and error messages stay plain text. This is also the
-                    // safe fallback if either Markdown dependency fails to load.
+                    // User and error messages stay plain text.
                     bubble.textContent = text;
                 }
                 div.appendChild(avatar);
@@ -539,7 +607,34 @@
                 return div;
             }
 
-            function appendTyping() {
+            function renderMarkdown(element, text) {
+                if (window.marked && window.DOMPurify) {
+                    const rendered = marked.parse(text, {
+                        breaks: true,
+                        gfm: true,
+                    });
+                    element.classList.add("richtext");
+                    element.innerHTML = DOMPurify.sanitize(rendered);
+                    element.querySelectorAll("a").forEach((link) => {
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
+                    });
+                } else {
+                    // The safe fallback if either Markdown dependency fails to load.
+                    element.textContent = text;
+                }
+            }
+
+            function formatDuration(ms) {
+                const seconds = Math.floor(ms / 1000);
+                if (seconds < 60) return seconds + "s";
+                return Math.floor(seconds / 60) + "m " + (seconds % 60) + "s";
+            }
+
+            // An assistant message that shows a status line while the model
+            // works, then the answer as it streams in. The status line is
+            // hidden from screen readers; replyAnnouncer speaks for it.
+            function appendStatusMessage() {
                 const div = document.createElement("div");
                 div.className = "message message--assistant";
                 const avatar = document.createElement("div");
@@ -547,13 +642,103 @@
                 avatar.textContent = "AI";
                 const bubble = document.createElement("div");
                 bubble.className = "message__bubble";
-                bubble.innerHTML =
-                    '<div class="typing-indicator"><span class="typing-indicator__dot"></span><span class="typing-indicator__dot"></span><span class="typing-indicator__dot"></span></div>';
+
+                const status = document.createElement("div");
+                status.className = "reply-status";
+                status.setAttribute("aria-hidden", "true");
+                const dot = document.createElement("span");
+                dot.className = "reply-status__dot";
+                const label = document.createElement("span");
+                const statusText = document.createElement("span");
+                statusText.className = "reply-status__text";
+                const timer = document.createElement("span");
+                timer.className = "reply-status__timer";
+                label.append(statusText, timer);
+                status.append(dot, label);
+                bubble.appendChild(status);
+
                 div.appendChild(avatar);
                 div.appendChild(bubble);
                 chatInner.appendChild(div);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
-                return div;
+
+                const startedAt = Date.now();
+                let phrase = 0;
+                // Status text is written by a model, so it only ever goes in
+                // as plain text.
+                statusText.textContent = localStatuses[phrase];
+                timer.textContent = " · 0s";
+                let tick = setInterval(() => {
+                    timer.textContent =
+                        " · " + formatDuration(Date.now() - startedAt);
+                }, 1000);
+                let rotate = setInterval(() => {
+                    phrase = Math.min(phrase + 1, localStatuses.length - 1);
+                    statusText.textContent = localStatuses[phrase];
+                }, 5000);
+
+                let answerEl = null;
+                let answer = "";
+                let frame = null;
+
+                function stopRotation() {
+                    clearInterval(rotate);
+                    rotate = null;
+                }
+
+                function stop() {
+                    clearInterval(tick);
+                    stopRotation();
+                    if (frame !== null) cancelAnimationFrame(frame);
+                    frame = null;
+                }
+
+                function startAnswer() {
+                    stop();
+                    status.className = "reply-status reply-status--done";
+                    status.textContent =
+                        "Thought for " + formatDuration(Date.now() - startedAt);
+                    answerEl = document.createElement("div");
+                    bubble.appendChild(answerEl);
+                }
+
+                function render() {
+                    frame = null;
+                    const atBottom =
+                        chatContainer.scrollHeight -
+                            chatContainer.scrollTop -
+                            chatContainer.clientHeight <
+                        40;
+                    renderMarkdown(answerEl, answer);
+                    if (atBottom) chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+
+                return {
+                    get answering() {
+                        return answerEl !== null;
+                    },
+                    setStatus(text) {
+                        if (answerEl) return;
+                        stopRotation();
+                        statusText.textContent = text;
+                    },
+                    appendAnswer(text) {
+                        if (!answerEl) startAnswer();
+                        answer += text;
+                        if (frame === null) frame = requestAnimationFrame(render);
+                    },
+                    finish(content) {
+                        if (!answerEl) startAnswer();
+                        stop();
+                        answer = content;
+                        render();
+                    },
+                    stop,
+                    remove() {
+                        stop();
+                        div.remove();
+                    },
+                };
             }
         </script>
     </body>
