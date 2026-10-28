@@ -115,12 +115,17 @@ def record_usage(model: str, usage: dict | None) -> None:
     ledger = _ledger.get()
     if ledger is None:
         return
-    if usage is None:
-        logger.warning("Response from %s had no usage; counting its cost as zero", model)
+    # Costing must never fail a turn, whatever shape a provider reports usage in.
+    if not isinstance(usage, dict):
+        logger.warning("Response from %s had no usable usage; counting its cost as zero", model)
         usage = {}
-    ledger.record(
-        _purpose.get(), model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
-    )
+    try:
+        input_tokens = int(usage.get("prompt_tokens") or 0)
+        output_tokens = int(usage.get("completion_tokens") or 0)
+    except (TypeError, ValueError):
+        logger.warning("Response from %s had unreadable token counts; counting its cost as zero", model)
+        input_tokens = output_tokens = 0
+    ledger.record(_purpose.get(), model, input_tokens, output_tokens)
 
 
 def cost_log_line(

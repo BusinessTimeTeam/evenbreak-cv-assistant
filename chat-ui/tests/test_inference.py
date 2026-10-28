@@ -196,3 +196,19 @@ def test_chat_params_override_and_remove_keys():
     assert "max_tokens" not in seen["body"]
     assert seen["body"]["max_completion_tokens"] == 8192
     assert seen["body"]["temperature"] == 0.2
+
+
+def test_chat_with_non_object_json_raises_inference_error():
+    with pytest.raises(InferenceError):
+        asyncio.run(inference.chat(CONFIG, [], client=_client(lambda r: httpx.Response(200, json=["x"]))))
+
+
+def test_chat_with_malformed_usage_still_returns_content():
+    ledger = trial.Ledger()
+
+    async def run():
+        with trial.recording(ledger):
+            return await inference.chat(CONFIG, [], client=_client(lambda r: _chat_response("weird")))
+
+    assert asyncio.run(run()) == "hi"
+    assert ledger.microusd() == 0

@@ -58,9 +58,12 @@ async def _post(
     if resp.status_code >= 400:
         raise InferenceError(f"{path} returned {resp.status_code}: {resp.text[:500]}")
     try:
-        return resp.json()
+        data = resp.json()
     except ValueError as exc:
         raise InferenceError(f"{path} returned non-JSON: {resp.text[:500]}") from exc
+    if not isinstance(data, dict):
+        raise InferenceError(f"{path} returned a non-object: {resp.text[:500]}")
+    return data
 
 
 async def embed(

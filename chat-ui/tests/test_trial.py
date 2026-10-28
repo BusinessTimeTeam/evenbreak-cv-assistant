@@ -3,6 +3,8 @@
 import asyncio
 import logging
 
+import pytest
+
 import trial
 
 
@@ -128,3 +130,12 @@ def test_models_payload_groups_in_order_with_default():
     first = payload["groups"][0]["models"][0]
     assert first == {"id": GPT_OSS.id, "name": "gpt-oss-20b"}
     assert sum(len(g["models"]) for g in payload["groups"]) == len(trial.MODELS)
+
+
+@pytest.mark.parametrize("usage", ["x", ["prompt_tokens"], {"prompt_tokens": "n/a", "completion_tokens": {}}])
+def test_malformed_usage_counts_zero_and_warns(caplog, usage):
+    ledger = trial.Ledger()
+    with caplog.at_level(logging.WARNING), trial.recording(ledger):
+        trial.record_usage(GPT_OSS.id, usage)
+    assert ledger.microusd() == 0
+    assert GPT_OSS.id in caplog.text
