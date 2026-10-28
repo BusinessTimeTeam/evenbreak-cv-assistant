@@ -8,8 +8,9 @@
 #
 # Secrets reach Dokku only through /root/dokku-setup.env (mode 0600, base64
 # encoded values), which the setup script reads and deletes when it exits.
-# The script never runs with `set -x`, so no value lands in
-# /var/log/cloud-init-output.log.
+# The script never runs with `set -x`, and config:set (which otherwise prints
+# the values it sets) runs with DOKKU_QUIET_OUTPUT=1 and stdout discarded, so
+# no value lands in /var/log/cloud-init-output.log.
 #
 # runcmd runs once per instance (not on reboot), and the secrets file is gone
 # after the first run, so the setup script is written to run exactly once.
@@ -111,11 +112,15 @@ write_files:
       dokku ports:set "$APP" http:80:8080
 
       # Secrets: decoded by Dokku from base64, read from the root-only file.
+      # config:set prints every value it sets, decoded and unmasked, unless
+      # DOKKU_QUIET_OUTPUT is set (Dokku carries it across its sudo to the
+      # dokku user); stdout is discarded as well, so neither value reaches
+      # cloud-init-output.log or the console. Errors still go to stderr.
       # shellcheck disable=SC1090
       . "$SECRETS_FILE"
-      dokku config:set --encoded --no-restart "$APP" \
+      DOKKU_QUIET_OUTPUT=1 dokku config:set --encoded --no-restart "$APP" \
         MODEL_ACCESS_KEY="$MODEL_ACCESS_KEY_B64" \
-        HISTORY_SIGNING_KEY="$HISTORY_SIGNING_KEY_B64"
+        HISTORY_SIGNING_KEY="$HISTORY_SIGNING_KEY_B64" >/dev/null
       unset MODEL_ACCESS_KEY_B64 HISTORY_SIGNING_KEY_B64
       rm -f "$SECRETS_FILE"
 
