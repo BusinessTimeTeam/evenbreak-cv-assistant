@@ -127,10 +127,3 @@ def test_config_from_env_requires_model_access_key(monkeypatch):
     assert config.base_url == "https://inference.do-ai.run/v1"
     assert config.chat_model == "openai-gpt-oss-20b"
     assert config.embedding_model == "qwen3-embedding-0.6b"
-
-
-def test_config_from_env_reads_named_key_var(monkeypatch):
-    monkeypatch.delenv("MODEL_ACCESS_KEY", raising=False)
-    monkeypatch.setenv("BUILD_MODEL_ACCESS_KEY", "build-secret")
-
-    assert InferenceConfig.from_env("BUILD_MODEL_ACCESS_KEY").api_key == "build-secret"

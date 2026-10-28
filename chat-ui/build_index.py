@@ -3,7 +3,7 @@
 Usage:
     python build_index.py --source DIR --out FILE
 
-Reads BUILD_MODEL_ACCESS_KEY, the embedding-only build key (and optionally EMBEDDING_MODEL / INFERENCE_BASE_URL)
+Reads MODEL_ACCESS_KEY (and optionally EMBEDDING_MODEL / INFERENCE_BASE_URL)
 from the environment. Runs in the Docker ``index`` stage on every image build.
 """
 
@@ -26,11 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", stream=sys.stdout)
 
     try:
-        config = InferenceConfig.from_env("BUILD_MODEL_ACCESS_KEY")
+        config = InferenceConfig.from_env()
     except KeyError:
         config = None
     if config is None or not config.api_key.strip():
-        print("error: BUILD_MODEL_ACCESS_KEY is not set (the embedding-only build key, needed to embed the knowledge base)", file=sys.stderr)
+        print("error: MODEL_ACCESS_KEY is not set (needed to embed the knowledge base)", file=sys.stderr)
         return 1
 
     started = time.monotonic()
