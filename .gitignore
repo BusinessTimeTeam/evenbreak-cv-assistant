@@ -29,3 +29,6 @@ resolved_models.json
 env.sh
 .env
 scratch.txt
+
+# Superpowers plan workspaces (ledgers, briefs)
+.superpowers/
