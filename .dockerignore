@@ -1,0 +1,16 @@
+# The chat-ui image builds from the repository root (so the index stage can read
+# knowledge-base/). Keep secrets, infra and scratch out of the build context.
+.git
+.env
+env.sh
+deploy/
+docs/
+.superpowers/
+.index/
+.github/
+**/__pycache__
+**/*.pyc
+scratch.txt
+tools/scrape/input/
+evals/results/
+**/.pytest_cache

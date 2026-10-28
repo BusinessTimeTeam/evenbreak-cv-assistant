@@ -184,10 +184,10 @@ The chat UI is a lightweight FastAPI application located in `chat-ui/`. It:
 
 ### Local development with Docker
 
-The chat UI is a thin proxy to the remote DO-managed agent, so local development
-runs **only the chat UI** in a container — it connects outbound to the agent over
-HTTPS. The DO services (knowledge base, agent, guardrails) cannot run locally and
-do not need to be exposed; the agent endpoint is gated by a secret API key.
+The chat UI answers questions itself: it searches a knowledge-base index built
+into its image, then calls DigitalOcean serverless inference. Local development
+runs **only the chat UI** in a container; it connects outbound to serverless
+inference over HTTPS with your model access key.
 
 Edits to `chat-ui/main.py` and `chat-ui/static/index.html` reload automatically.
 
@@ -197,33 +197,30 @@ Edits to `chat-ui/main.py` and `chat-ui/static/index.html` reload automatically.
 cp .env.example .env
 ```
 
-`AGENT_ENDPOINT` is pre-filled with the current agent deployment URL. You only
-need to supply `AGENT_API_KEY`.
+**2. Create a model access key (one time):** [DO console](https://cloud.digitalocean.com/model-studio/manage-keys)
+→ **Create model access key** → **Select models**: gpt-oss-20b and Qwen3
+Embedding 0.6B → **No VPC network** → copy the secret (it is shown once) into
+`.env` as `MODEL_ACCESS_KEY`.
 
-**2. Mint an agent API key (one time).**:
-
-- **Console:** [DO console](https://cloud.digitalocean.com/) → **GenAI Platform →
-  Agents** → select the agent → **API Keys** → **Create Key** → copy the secret
-  key.
-
-Paste the key into `.env` as `AGENT_API_KEY`. The key is reused across restarts —
-revoke it in the console when you no longer need it.
-
-**3. (Only if the agent was recreated)** refresh the endpoint:
+**3. Run it:**
 
 ```bash
-cd deploy && terraform output agent_endpoint   # paste into .env as AGENT_ENDPOINT
-```
-
-**4. Run it:**
-
-```bash
-docker compose up
+docker compose up --build
 ```
 
 Open <http://localhost:8080>.
 
-> Running tests: `cd chat-ui && pip install -r requirements-dev.txt && python -m pytest`
+The first build embeds everything in `knowledge-base/data-sources/` into the
+image (about a minute, about 1¢). Later builds reuse the cached index unless a
+document changed. After adding or editing documents, rebuild with:
+
+```bash
+docker compose build chat-ui
+```
+
+The index is built on every deploy too, so it is never committed to git.
+
+> Running tests: `docker compose run --rm chat-ui-test`
 
 ## Security
 

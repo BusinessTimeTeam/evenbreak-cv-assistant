@@ -28,7 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = InferenceConfig.from_env()
     except KeyError:
-        print("error: MODEL_ACCESS_KEY is not set", file=sys.stderr)
+        config = None
+    if config is None or not config.api_key.strip():
+        print("error: MODEL_ACCESS_KEY is not set (needed to embed the knowledge base)", file=sys.stderr)
         return 1
 
     started = time.monotonic()
