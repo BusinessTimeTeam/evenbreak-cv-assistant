@@ -29,7 +29,7 @@ ARG MODEL_ACCESS_KEY
 ARG EMBEDDING_MODEL=qwen3-embedding-0.6b
 ARG INFERENCE_BASE_URL=https://inference.do-ai.run/v1
 
-COPY chat-ui/inference.py chat-ui/chunking.py chat-ui/pdf_text.py chat-ui/retrieval.py chat-ui/build_index.py ./
+COPY chat-ui/inference.py chat-ui/trial.py chat-ui/chunking.py chat-ui/pdf_text.py chat-ui/retrieval.py chat-ui/build_index.py ./
 COPY knowledge-base/data-sources/ /kb/
 
 RUN python build_index.py --source /kb --out /index/kb_index.npz
