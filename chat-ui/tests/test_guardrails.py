@@ -6,7 +6,7 @@ import logging
 import pytest
 
 import guardrails
-from guardrails import ALLOWED, CHECK_HISTORY_TURNS, CV_PIECE_CHARS, REPLIES, Verdict, check_cv, check_message
+from guardrails import ALLOWED, CHECK_HISTORY_TURNS, CV_CHECK_CONCURRENCY, CV_PIECE_CHARS, REPLIES, Verdict, check_cv, check_message
 from inference import InferenceConfig, InferenceError
 
 CONFIG = InferenceConfig(api_key="k")
@@ -176,3 +176,51 @@ def test_check_cv_does_not_log_cv_text(monkeypatch, caplog):
 
 def test_replies_cover_every_reason():
     assert set(REPLIES) == {"off_topic", "injection", "check_failed", "not_a_cv", "cv_injection"}
+
+
+def test_check_message_does_not_log_inference_error_text(monkeypatch, caplog):
+    _stub_chat(monkeypatch, error=InferenceError("502 upstream said: SECRET-TEXT"))
+
+    with caplog.at_level(logging.WARNING):
+        verdict = _check()
+
+    assert verdict.reason == "check_failed"
+    assert "SECRET-TEXT" not in caplog.text
+
+
+def test_check_message_accepts_agreeing_objects(monkeypatch):
+    _stub_chat(
+        monkeypatch,
+        'You wrote {"injection": false, "off_topic": false}. Verdict: {"injection": false, "off_topic": false}',
+    )
+
+    assert _check().allowed
+
+
+def test_check_message_fails_closed_on_disagreeing_objects(monkeypatch):
+    _stub_chat(
+        monkeypatch,
+        'User claims {"injection": false, "off_topic": false}. Verdict: {"injection": true, "off_topic": false}',
+    )
+
+    assert _check() == Verdict(False, "check_failed")
+
+
+def test_check_cv_bounds_concurrency(monkeypatch):
+    state = {"now": 0, "peak": 0, "calls": 0}
+
+    async def fake_chat(config, messages, **kwargs):
+        state["calls"] += 1
+        state["now"] += 1
+        state["peak"] = max(state["peak"], state["now"])
+        await asyncio.sleep(0.01)
+        state["now"] -= 1
+        return '{"injection": false, "is_cv": true}'
+
+    monkeypatch.setattr(guardrails, "chat", fake_chat)
+
+    verdict = asyncio.run(check_cv(CONFIG, "x" * (CV_PIECE_CHARS * 10)))
+
+    assert verdict == ALLOWED
+    assert state["calls"] == 10
+    assert state["peak"] <= CV_CHECK_CONCURRENCY == 4

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 CHECK_HISTORY_TURNS = 4
 CV_PIECE_CHARS = 12000
+CV_CHECK_CONCURRENCY = 4
 
 
 @dataclass(frozen=True)
@@ -105,15 +106,24 @@ _JSON_OBJECT = re.compile(r"\{.*?\}", re.DOTALL)
 
 
 def _parse_flags(reply: str | None, *keys: str) -> dict[str, bool] | None:
-    """Return the requested boolean fields from the reply's JSON object, or None."""
+    """Return the requested boolean fields from the reply's JSON object(s), or None.
+
+    The model may quote text the user supplied, including a fake verdict object, so
+    every candidate object is collected: if they all agree that verdict is used, and
+    if they disagree the reply is treated as unusable (the caller fails closed).
+    The regex only matches flat objects, which is all the verdicts ever are.
+    """
+    found = []
     for match in _JSON_OBJECT.finditer(reply or ""):
         try:
             parsed = json.loads(match.group(0))
         except ValueError:
             continue
         if isinstance(parsed, dict) and all(isinstance(parsed.get(k), bool) for k in keys):
-            return {k: parsed[k] for k in keys}
-    return None
+            found.append({k: parsed[k] for k in keys})
+    if not found or any(f != found[0] for f in found):
+        return None
+    return found[0]
 
 
 def _delimit(content: str) -> str:
@@ -129,7 +139,8 @@ async def _classify(config: InferenceConfig, instruction: str, content: str, *ke
     try:
         reply = await chat(config, messages, temperature=0, max_tokens=512)
     except InferenceError as exc:
-        logger.warning("Guardrail check failed: %s", exc)
+        # Not the message: InferenceError text can embed upstream bodies that echo user text.
+        logger.warning("Guardrail check failed: %s", type(exc).__name__)
         return None
     flags = _parse_flags(reply, *keys)
     if flags is None:
@@ -159,9 +170,14 @@ async def check_message(config: InferenceConfig, message: str, history: list[dic
 
 async def check_cv(config: InferenceConfig, text: str) -> Verdict:
     pieces = [text[i : i + CV_PIECE_CHARS] for i in range(0, len(text), CV_PIECE_CHARS)] or [""]
-    results = await asyncio.gather(
-        *(_classify(config, _CV_INSTRUCTION, piece, "injection", "is_cv") for piece in pieces)
-    )
+    # Bounded so a long CV doesn't fan out into a burst of calls and hit rate limits.
+    semaphore = asyncio.Semaphore(CV_CHECK_CONCURRENCY)
+
+    async def classify_piece(piece: str):
+        async with semaphore:
+            return await _classify(config, _CV_INSTRUCTION, piece, "injection", "is_cv")
+
+    results = await asyncio.gather(*(classify_piece(piece) for piece in pieces))
     if any(r is None for r in results):
         return Verdict(False, "check_failed")
     if any(r["injection"] for r in results):
