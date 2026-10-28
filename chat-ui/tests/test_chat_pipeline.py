@@ -26,7 +26,7 @@ from retrieval import Index, IndexLoadError  # noqa: E402
 ADJUSTMENTS = "Ask for reasonable adjustments before the interview."
 GAPS = "Keep explanations of CV gaps brief and positive."
 DEFAULT = main._config.chat_model
-SONNET = next(m for m in trial.MODELS if m.name == "Claude Sonnet 5.5").id
+PREMIUM = next(m for m in trial.MODELS if m.name == "DeepSeek V4 Pro").id
 QA = "qa-test"
 # Usage the stubs report, per call.
 REPLY_USAGE = {"prompt_tokens": 1000, "completion_tokens": 100}
@@ -358,11 +358,11 @@ def test_models_endpoint_lists_groups_and_default(pipeline):
 
 
 def test_first_qa_turn_creates_session_and_uses_chosen_model(pipeline):
-    body = _chat({"message": "Hello", "history": [], "model": SONNET}).json()
+    body = _chat({"message": "Hello", "history": [], "model": PREMIUM}).json()
 
     assert body["session_id"].startswith("qa-")
-    assert body["model"] == SONNET
-    assert pipeline["chat_kwargs"][0]["model"] == SONNET
+    assert body["model"] == PREMIUM
+    assert pipeline["chat_kwargs"][0]["model"] == PREMIUM
 
 
 def test_first_qa_turn_defaults_to_the_configured_model(pipeline):
@@ -386,7 +386,7 @@ def test_guardrail_and_rewrite_use_fixed_model(pipeline, monkeypatch):
     monkeypatch.setattr(main, "check_message", spy_check)
     monkeypatch.setattr(main, "rewrite_queries", spy_rewrite)
 
-    _chat({"message": "Hello", "history": [], "model": SONNET})
+    _chat({"message": "Hello", "history": [], "model": PREMIUM})
 
     assert seen == [("check", DEFAULT), ("rewrite", DEFAULT)]
 
@@ -401,9 +401,9 @@ def test_unknown_model_is_rejected_with_400(pipeline, model):
 
 
 def test_turn_cost_counts_every_call(pipeline):
-    body = _chat({"message": "Hello", "history": [], "model": SONNET}).json()
+    body = _chat({"message": "Hello", "history": [], "model": PREMIUM}).json()
 
-    in_price, out_price = trial.PRICES[SONNET]
+    in_price, out_price = trial.PRICES[PREMIUM]
     guard_in, guard_out = trial.PRICES[DEFAULT]
     expected = (
         1000 * in_price + 100 * out_price  # reply
@@ -414,7 +414,7 @@ def test_turn_cost_counts_every_call(pipeline):
 
 
 def test_total_accumulates_across_turns(pipeline):
-    first = _chat({"message": "Hello", "history": [], "model": SONNET}).json()
+    first = _chat({"message": "Hello", "history": [], "model": PREMIUM}).json()
     second = _chat(_next(first, "And then?")).json()
 
     assert 0 < first["total_microusd"] < second["total_microusd"]
@@ -425,7 +425,7 @@ def test_changing_model_mid_conversation_is_expired(pipeline):
     first = _chat({"message": "Hello", "history": [], "model": DEFAULT}).json()
     pipeline["chat"].clear()
 
-    resp = _chat({**_next(first, "Go on"), "model": SONNET})
+    resp = _chat({**_next(first, "Go on"), "model": PREMIUM})
 
     assert resp.status_code == 400
     assert resp.json()["expired"] is True
@@ -447,7 +447,7 @@ def test_empty_history_with_a_session_needs_a_token(pipeline):
     # client can't restart a CV conversation to reset its total or model.
     main._cv_sessions["s1"] = {"filename": "cv.docx", "text": "Alex", "model": DEFAULT}
 
-    resp = _chat({"message": "Hello", "history": [], "session_id": "s1", "model": SONNET})
+    resp = _chat({"message": "Hello", "history": [], "session_id": "s1", "model": PREMIUM})
 
     assert resp.status_code == 400
     assert resp.json()["expired"] is True
@@ -466,11 +466,11 @@ def test_lost_cv_session_is_expired(pipeline):
 def test_blocked_first_qa_turn_returns_session_and_token_and_counts_cost(pipeline):
     pipeline["verdict"] = Verdict(False, "off_topic")
 
-    blocked = _chat({"message": "Sort a list", "history": [], "model": SONNET}).json()
+    blocked = _chat({"message": "Sort a list", "history": [], "model": PREMIUM}).json()
 
     assert blocked["history"] == []
     assert blocked["session_id"].startswith("qa-")
-    assert blocked["model"] == SONNET
+    assert blocked["model"] == PREMIUM
     assert blocked["total_microusd"] > 0
 
     del pipeline["verdict"]
@@ -481,13 +481,13 @@ def test_blocked_first_qa_turn_returns_session_and_token_and_counts_cost(pipelin
 
 def test_turn_log_line_has_cost_and_no_message_text(pipeline, caplog):
     with caplog.at_level("INFO"):
-        body = _chat({"message": "secret-question-text", "history": [], "model": SONNET}).json()
+        body = _chat({"message": "secret-question-text", "history": [], "model": PREMIUM}).json()
 
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("Turn cost:"))
     assert "kind=chat" in line
     assert "outcome=answered" in line
     assert f"session={body['session_id']}" in line
-    assert f"model={SONNET}" in line
+    assert f"model={PREMIUM}" in line
     assert "reply_in=1000" in line
     assert "guard_in=100" in line
     assert "rewrite_in=50" in line

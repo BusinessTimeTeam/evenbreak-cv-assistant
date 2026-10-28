@@ -10,15 +10,17 @@ def _model(name):
     return next(m for m in trial.MODELS if m.name == name)
 
 
-SONNET = _model("Claude Sonnet 5.5")
+PRO = _model("DeepSeek V4 Pro")
 GPT_OSS = _model("gpt-oss-20b")
 EMBEDDING = "qwen3-embedding-0.6b"
 
 
 def test_models_cover_the_spec_table():
-    assert len(trial.MODELS) == 10
-    assert {m.group for m in trial.MODELS} == set(trial.GROUPS)
-    assert (SONNET.group, SONNET.input_price, SONNET.output_price) == ("Premium · closed", 2.00, 10.00)
+    assert [m.name for m in trial.MODELS] == [
+        "gpt-oss-20b", "DeepSeek V4 Flash", "Qwen 3.5 397B", "DeepSeek V4 Pro", "GLM-5.3", "Kimi K3"
+    ]
+    assert {m.group for m in trial.MODELS} <= set(trial.GROUPS)
+    assert (PRO.group, PRO.input_price, PRO.output_price) == ("Premium · open", 1.74, 3.48)
     assert (GPT_OSS.group, GPT_OSS.input_price, GPT_OSS.output_price) == ("Budget · open", 0.05, 0.45)
 
 
@@ -29,15 +31,15 @@ def test_every_model_and_the_embedding_model_is_priced():
 
 
 def test_find_model():
-    assert trial.find_model(SONNET.id) is SONNET
+    assert trial.find_model(PRO.id) is PRO
     assert trial.find_model("no-such-model") is None
 
 
 def test_cost_is_micro_usd_from_per_million_prices():
     ledger = trial.Ledger()
-    ledger.record("reply", SONNET.id, 1_000, 500)  # 1000*2 + 500*10 = 7000
+    ledger.record("reply", PRO.id, 1_000, 500)  # 1000*1.74 + 500*3.48 = 3480
     ledger.record("embed", EMBEDDING, 30, 0)  # 30*0.04 = 1.2
-    assert ledger.microusd() == 7001
+    assert ledger.microusd() == 3481
 
 
 def test_record_usage_without_a_ledger_is_a_no_op():
@@ -94,13 +96,13 @@ def test_usage_from_gathered_tasks_lands_in_one_ledger():
 
 def test_cost_log_line_has_fields_and_no_text():
     ledger = trial.Ledger()
-    ledger.record("reply", SONNET.id, 1_000, 500)
-    line = trial.cost_log_line("chat", "answered", "qa-1", SONNET.id, ledger, 12345)
+    ledger.record("reply", PRO.id, 1_000, 500)
+    line = trial.cost_log_line("chat", "answered", "qa-1", PRO.id, ledger, 12345)
     for field in (
         "kind=chat",
         "outcome=answered",
         "session=qa-1",
-        f"model={SONNET.id}",
+        f"model={PRO.id}",
         "reply_in=1000",
         "reply_out=500",
         "guard_in=0",
@@ -108,16 +110,21 @@ def test_cost_log_line_has_fields_and_no_text():
         "rewrite_in=0",
         "rewrite_out=0",
         "embed_in=0",
-        "turn_usd=0.007000",
+        "turn_usd=0.003480",
         "total_usd=0.012345",
     ):
         assert field in line
 
 
+def test_kimi_k3_sends_the_top_p_it_requires():
+    assert _model("Kimi K3").params == {"top_p": 0.95}
+
+
 def test_models_payload_groups_in_order_with_default():
     payload = trial.models_payload(GPT_OSS.id)
     assert payload["default"] == GPT_OSS.id
-    assert [g["label"] for g in payload["groups"]] == trial.GROUPS
+    # Groups keep GROUPS order; groups with no models are left out.
+    assert [g["label"] for g in payload["groups"]] == [g for g in trial.GROUPS if "open" in g]
     first = payload["groups"][0]["models"][0]
     assert first == {"id": GPT_OSS.id, "name": "gpt-oss-20b"}
-    assert sum(len(g["models"]) for g in payload["groups"]) == 10
+    assert sum(len(g["models"]) for g in payload["groups"]) == len(trial.MODELS)

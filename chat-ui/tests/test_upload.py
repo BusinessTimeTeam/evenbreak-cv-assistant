@@ -22,7 +22,7 @@ import trial  # noqa: E402
 from guardrails import ALLOWED, REPLIES, Verdict  # noqa: E402
 
 DEFAULT = main._config.chat_model
-SONNET = next(m for m in trial.MODELS if m.name == "Claude Sonnet 5.5").id
+PREMIUM = next(m for m in trial.MODELS if m.name == "DeepSeek V4 Pro").id
 CHECK_USAGE = {"prompt_tokens": 2000, "completion_tokens": 50}
 
 
@@ -197,16 +197,16 @@ def test_upload_with_unknown_model_skips_cv_check(client):
 
 
 def test_upload_returns_model_total_and_token_and_first_chat_accepts_them(client):
-    upload = _upload(client, "Ada Lovelace", model=SONNET).json()
+    upload = _upload(client, "Ada Lovelace", model=PREMIUM).json()
 
     in_price, out_price = trial.PRICES[DEFAULT]  # the CV check runs on the fixed model
-    assert upload["model"] == SONNET
+    assert upload["model"] == PREMIUM
     assert upload["total_microusd"] == round(2000 * in_price + 50 * out_price)
-    assert main._cv_sessions[upload["session_id"]]["model"] == SONNET
+    assert main._cv_sessions[upload["session_id"]]["model"] == PREMIUM
 
     resp = _first_chat(client, upload, "Summarise me")
     assert resp.status_code == 200
-    assert client.captured["model"].id == SONNET
+    assert client.captured["model"].id == PREMIUM
     assert resp.json()["total_microusd"] >= upload["total_microusd"]
 
 
@@ -218,10 +218,10 @@ def test_rejected_upload_logs_cost_without_session(client, caplog):
     client.captured["cv_verdict"] = Verdict(False, "not_a_cv")
 
     with caplog.at_level("INFO"):
-        _upload(client, "A recipe for soup", model=SONNET)
+        _upload(client, "A recipe for soup", model=PREMIUM)
 
     assert "kind=upload outcome=rejected session=None" in caplog.text
-    assert f"model={SONNET}" in caplog.text
+    assert f"model={PREMIUM}" in caplog.text
     assert "guard_in=2000" in caplog.text
     assert "soup" not in caplog.text
 
