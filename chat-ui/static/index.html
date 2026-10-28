@@ -474,6 +474,9 @@
                     }
                 } catch (err) {
                     if (err.name === "AbortError") return;
+                    // Stop the server writing a reply nobody will read, for
+                    // example after a line that wasn't valid JSON.
+                    controller.abort();
                     if (generation !== conversationGeneration) return;
                     reply.remove();
                     appendMessage("assistant", connectionError, true);
@@ -673,7 +676,9 @@
                         " · " + formatDuration(Date.now() - startedAt);
                 }, 1000);
                 let rotate = setInterval(() => {
-                    phrase = Math.min(phrase + 1, localStatuses.length - 1);
+                    // Cycle through all but the first phrase until the server
+                    // sends its own.
+                    phrase = (phrase % (localStatuses.length - 1)) + 1;
                     statusText.textContent = localStatuses[phrase];
                 }, 5000);
 
