@@ -20,6 +20,7 @@ import re
 import sys
 import time
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
@@ -62,16 +63,28 @@ def render_document(url: str, markdown: str, captured: date) -> str:
     return f"> Source: {url} — captured {captured.isoformat()}\n\n{markdown.strip()}\n"
 
 
-def robots_allows(url: str) -> bool:
-    robots_url = urljoin(url, "/robots.txt")
+@lru_cache(maxsize=None)
+def _robots_rules(robots_url: str) -> RobotFileParser | bool:
+    """Parsed robots.txt for a site, or True/False for allow-all/disallow-all.
+
+    Cached so a site's robots.txt is fetched once per run, not once per page;
+    scrape_urls clears the cache at the start of each run.
+    """
     status, body = _get(robots_url)
-    parser = RobotFileParser()
     if status in (401, 403):
         return False  # same rule as urllib.robotparser
     if status is None or status >= 400:
         return True  # no robots.txt: nothing is disallowed
+    parser = RobotFileParser()
     parser.parse(body.splitlines())
-    return parser.can_fetch(USER_AGENT, url)
+    return parser
+
+
+def robots_allows(url: str) -> bool:
+    rules = _robots_rules(urljoin(url, "/robots.txt"))
+    if isinstance(rules, bool):
+        return rules
+    return rules.can_fetch(USER_AGENT, url)
 
 
 def sitemap_urls(sitemap_url: str) -> list[str]:
@@ -101,6 +114,7 @@ def scrape_html_file(html_path: Path, url: str, out_dir: Path, captured: date) -
 
 def scrape_urls(urls: list[str], out_dir: Path, *, delay: float, captured: date) -> list[str]:
     """Scrape each URL; return a description of every failure (empty if none)."""
+    _robots_rules.cache_clear()
     failures = []
     for i, url in enumerate(urls):
         if i and delay:

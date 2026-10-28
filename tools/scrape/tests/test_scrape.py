@@ -105,6 +105,24 @@ def test_robots_txt_missing_means_allow(monkeypatch):
     assert scrape.robots_allows("https://example.org/page/") is True
 
 
+def test_robots_txt_is_fetched_once_per_site(monkeypatch, tmp_path):
+    fetched = []
+
+    def fake_fetch_response(url, decode=True, config=None):
+        fetched.append(url)
+        if url.endswith("/robots.txt"):
+            return SimpleNamespace(status=200, html="User-agent: *\nAllow: /\n")
+        return SimpleNamespace(status=200, html=FIXTURE.read_text())
+
+    monkeypatch.setattr(scrape, "fetch_response", fake_fetch_response)
+    urls = [f"https://example.org/page-{i}/" for i in range(3)]
+
+    scrape.scrape_urls(urls, tmp_path, delay=0, captured=CAPTURED)
+
+    assert fetched.count("https://example.org/robots.txt") == 1
+    assert sum(not u.endswith("robots.txt") for u in fetched) == 3
+
+
 def test_sitemap_urls_are_read_from_loc_entries(monkeypatch):
     sitemap = (
         '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
