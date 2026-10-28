@@ -38,3 +38,6 @@ scratch.txt
 
 # Saved HTML pages fed to the scraper (not committed)
 tools/scrape/input/
+
+# Comparison runs (the old-agent baseline in evals/baseline/ IS committed)
+evals/results/

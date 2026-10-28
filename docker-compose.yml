@@ -52,3 +52,23 @@ services:
       - ./tools/scrape:/app
       - ./tools/scrape/input:/input:ro
       - ./knowledge-base/data-sources/web:/out
+
+  # Old-vs-new comparison (evals/compare.py). Uses the dev image; needs
+  # AGENT_ENDPOINT / AGENT_API_KEY in .env for the old agent, and the chat-ui
+  # service running for the new pipeline:
+  #   docker compose run --rm evals python /evals/compare.py --baseline
+  #   docker compose up -d chat-ui && docker compose run --rm evals python /evals/compare.py
+  evals:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: chat-ui/Dockerfile
+      target: dev
+    env_file:
+      - ./.env
+    environment:
+      PYTHONPATH: /app:/evals
+    volumes:
+      - ./chat-ui:/app
+      - ./evals:/evals
+    command: python /evals/compare.py
