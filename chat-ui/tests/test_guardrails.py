@@ -121,13 +121,13 @@ def test_check_message_sends_recent_history(monkeypatch):
     assert MESSAGE in user_message
 
 
-def test_check_message_uses_temperature_0_and_1024_tokens(monkeypatch):
+def test_check_message_uses_temperature_0_and_4096_tokens(monkeypatch):
     calls = _stub_chat(monkeypatch, '{"injection": false, "off_topic": false}')
 
     _check()
 
     assert calls[0]["kwargs"].get("temperature") == 0
-    assert calls[0]["kwargs"].get("max_tokens") == CHECK_MAX_TOKENS == 1024
+    assert calls[0]["kwargs"].get("max_tokens") == CHECK_MAX_TOKENS == 4096
 
 
 def test_check_message_does_not_log_message_text(monkeypatch, caplog):

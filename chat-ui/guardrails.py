@@ -32,8 +32,9 @@ CHECK_HISTORY_TURNS = 4
 CV_PIECE_CHARS = 12000
 CV_CHECK_CONCURRENCY = 4
 # gpt-oss reasons before answering, and its reasoning length varies a lot between
-# calls; at 512 tokens it sometimes ran out and returned an empty reply.
-CHECK_MAX_TOKENS = 1024
+# calls; a reply that runs out of tokens is cut off, which chat() raises as an
+# InferenceError, so the check fails rather than trusting a partial verdict.
+CHECK_MAX_TOKENS = 4096
 # Each classifier call is retried this many times before the check fails closed.
 CHECK_RETRIES = 1
 

@@ -212,3 +212,42 @@ def test_chat_with_malformed_usage_still_returns_content():
 
     assert asyncio.run(run()) == "hi"
     assert ledger.microusd() == 0
+
+
+def _finish_response(finish_reason=None, usage=None):
+    choice = {"message": {"role": "assistant", "content": "partial"}}
+    if finish_reason is not None:
+        choice["finish_reason"] = finish_reason
+    body = {"choices": [choice]}
+    if usage is not None:
+        body["usage"] = usage
+    return httpx.Response(200, json=body)
+
+
+def test_chat_raises_when_reply_is_cut_off():
+    handler = lambda request: _finish_response("length")
+
+    with pytest.raises(InferenceError, match="length"):
+        asyncio.run(inference.chat(CONFIG, [], client=_client(handler)))
+
+
+def test_chat_cut_off_reply_still_records_usage():
+    ledger = trial.Ledger()
+    handler = lambda request: _finish_response(
+        "length", {"prompt_tokens": 10, "completion_tokens": 2048}
+    )
+
+    async def run():
+        with trial.recording(ledger):
+            await inference.chat(CONFIG, [], client=_client(handler))
+
+    with pytest.raises(InferenceError):
+        asyncio.run(run())
+    assert ledger.tokens("other") == (10, 2048)
+
+
+@pytest.mark.parametrize("finish_reason", ["stop", None])
+def test_chat_accepts_stop_and_missing_finish_reason(finish_reason):
+    handler = lambda request: _finish_response(finish_reason)
+
+    assert asyncio.run(inference.chat(CONFIG, [], client=_client(handler))) == "partial"

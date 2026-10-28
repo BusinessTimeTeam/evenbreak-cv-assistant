@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 MAX_QUERIES = 4
 HISTORY_TURNS = 6
 CV_SNIPPET_CHARS = 2000
+# Room for the model's reasoning as well as the queries; a cut-off reply falls back to the raw message.
+REWRITE_MAX_TOKENS = 4096
 
 _REWRITE_INSTRUCTION = (
     "You write search queries for a knowledge base about CVs, employment and "
@@ -69,7 +71,7 @@ async def rewrite_queries(
         {"role": "user", "content": "\n\n".join(parts)},
     ]
     try:
-        reply = await chat(config, messages, temperature=0, max_tokens=512)
+        reply = await chat(config, messages, temperature=0, max_tokens=REWRITE_MAX_TOKENS)
     except InferenceError as exc:
         logger.warning("Query rewrite failed, searching on the raw message: %s", exc)
         return [message]

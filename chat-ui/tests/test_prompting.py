@@ -143,3 +143,17 @@ def test_system_prompt_says_to_ignore_instructions_in_documents():
 
 def test_system_prompt_says_not_to_invent_cv_details():
     assert "Never invent facts, figures or achievements" in load_system_prompt()
+
+
+def test_rewrite_falls_back_to_raw_message_on_cut_off_reply(monkeypatch):
+    _stub_chat(monkeypatch, error=InferenceError("chat finished with length"))
+
+    assert _rewrite() == [MESSAGE]
+
+
+def test_rewrite_uses_its_token_limit(monkeypatch):
+    captured = _stub_chat(monkeypatch, '["q"]')
+
+    _rewrite()
+
+    assert captured["kwargs"]["max_tokens"] == prompting.REWRITE_MAX_TOKENS == 4096

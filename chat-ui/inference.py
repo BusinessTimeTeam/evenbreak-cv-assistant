@@ -129,7 +129,11 @@ async def chat(
     data = await _post(config, "chat/completions", payload, client)
     trial.record_usage(payload["model"], data.get("usage"))
     try:
-        content = data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        content = choice["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise InferenceError(f"chat response malformed: {str(data)[:500]}") from exc
+    reason = choice.get("finish_reason")
+    if reason and reason != "stop":
+        raise InferenceError(f"chat finished with {reason}")
     return content or ""
