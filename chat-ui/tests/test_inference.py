@@ -11,7 +11,7 @@ import pytest
 
 import inference
 import trial
-from inference import InferenceConfig, InferenceError
+from inference import ChatDelta, InferenceConfig, InferenceError
 
 CONFIG = InferenceConfig(api_key="k")
 
@@ -251,3 +251,135 @@ def test_chat_accepts_stop_and_missing_finish_reason(finish_reason):
     handler = lambda request: _finish_response(finish_reason)
 
     assert asyncio.run(inference.chat(CONFIG, [], client=_client(handler))) == "partial"
+
+
+def _sse(*chunks, done=True):
+    lines = [f"data: {json.dumps(c)}\n\n" for c in chunks]
+    if done:
+        lines.append("data: [DONE]\n\n")
+    return "".join(lines).encode()
+
+
+def _delta_chunk(reasoning=None, content=None, finish=None):
+    delta = {}
+    if reasoning is not None:
+        delta["reasoning_content"] = reasoning
+    if content is not None:
+        delta["content"] = content
+    return {"choices": [{"delta": delta, "finish_reason": finish}]}
+
+
+def _usage_chunk(prompt, completion):
+    return {"choices": [], "usage": {"prompt_tokens": prompt, "completion_tokens": completion}}
+
+
+def _stream_response(body: bytes, status=200):
+    return httpx.Response(status, content=body)
+
+
+def _collect(handler, **kwargs):
+    async def run():
+        return [
+            d
+            async for d in inference.chat_stream(
+                CONFIG, [{"role": "user", "content": "x"}], client=_client(handler), **kwargs
+            )
+        ]
+
+    return asyncio.run(run())
+
+
+def test_chat_stream_yields_thinking_then_answer():
+    body = _sse(
+        _delta_chunk(reasoning="Hmm"),
+        _delta_chunk(reasoning=""),
+        _delta_chunk(content="Hi"),
+        _delta_chunk(content=" there"),
+        _delta_chunk(content="", finish="stop"),
+    )
+    deltas = _collect(lambda request: _stream_response(body))
+    assert deltas == [
+        ChatDelta("thinking", "Hmm"),
+        ChatDelta("answer", "Hi"),
+        ChatDelta("answer", " there"),
+    ]
+
+
+def test_chat_stream_sends_stream_options_and_params():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return _stream_response(_sse(_delta_chunk(content="Hi", finish="stop")))
+
+    _collect(handler, max_tokens=32768, params={"top_p": None, "temperature": 0.7})
+    body = seen["body"]
+    assert body["stream"] is True and body["stream_options"] == {"include_usage": True}
+    assert body["max_tokens"] == 32768
+    assert "top_p" not in body
+    assert body["temperature"] == 0.7
+
+
+def test_chat_stream_records_usage_from_final_chunk():
+    ledger = trial.Ledger()
+    body = _sse(_delta_chunk(content="Hi", finish="stop"), _usage_chunk(600, 6000))
+
+    async def run():
+        with trial.recording(ledger):
+            async for _ in inference.chat_stream(
+                CONFIG, [], client=_client(lambda request: _stream_response(body))
+            ):
+                pass
+
+    asyncio.run(run())
+    assert ledger.tokens("other") == (600, 6000)
+
+
+def test_chat_stream_raises_on_length_after_recording_usage():
+    ledger = trial.Ledger()
+    body = _sse(_delta_chunk(content="Hi", finish="length"), _usage_chunk(600, 32768))
+
+    async def run():
+        with trial.recording(ledger):
+            async for _ in inference.chat_stream(
+                CONFIG, [], client=_client(lambda request: _stream_response(body))
+            ):
+                pass
+
+    with pytest.raises(InferenceError, match="length"):
+        asyncio.run(run())
+    assert ledger.tokens("other") == (600, 32768)
+
+
+def test_chat_stream_raises_when_no_answer_text():
+    body = _sse(_delta_chunk(reasoning="Hmm"), _delta_chunk(content="", finish="stop"))
+    with pytest.raises(InferenceError, match="no answer"):
+        _collect(lambda request: _stream_response(body))
+
+
+def test_chat_stream_raises_when_stream_ends_without_finish_reason():
+    body = _sse(_delta_chunk(content="Hi"))
+    with pytest.raises(InferenceError, match="finish"):
+        _collect(lambda request: _stream_response(body))
+
+
+def test_chat_stream_raises_on_http_error():
+    with pytest.raises(InferenceError, match="429"):
+        _collect(lambda request: _stream_response(b"busy", status=429))
+
+
+def test_chat_stream_raises_on_malformed_line():
+    with pytest.raises(InferenceError, match="JSON"):
+        _collect(lambda request: _stream_response(b"data: {not json\n\n"))
+
+
+def test_chat_stream_raises_after_idle_timeout():
+    class Slow(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield _sse(_delta_chunk(content="Hi"), done=False)
+            await asyncio.sleep(0.2)
+            yield _sse(_delta_chunk(content="!", finish="stop"))
+
+    handler = lambda request: httpx.Response(200, stream=Slow())
+    with pytest.raises(InferenceError, match="idle"):
+        _collect(handler, idle_timeout=0.05)
