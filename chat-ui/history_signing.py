@@ -2,9 +2,11 @@
 
 The browser holds the conversation and sends it back each turn, so the app
 stays stateless. That would let a user fake earlier assistant turns, so the
-server signs the history it produced (HMAC-SHA256, bound to the CV session and
-an issue time) and rejects history that was edited, replayed against another
-session, signed with another key, or is older than 24 hours.
+server signs the history it produced (HMAC-SHA256, bound to the session, the
+conversation's model and running cost, and an issue time) and rejects history
+that was edited, replayed against another session, model or cost, signed with
+another key, or is older than 24 hours. Every turn needs a token, including an
+empty history; the caller decides when a request starts a new conversation.
 
 Token format: ``"<issued_at int>.<hex HMAC>"``.
 """
@@ -21,9 +23,16 @@ class HistoryTokenError(Exception):
     """The history token is missing, malformed, forged, mismatched or expired."""
 
 
-def _mac(key: bytes, history: list[dict], session_id: str | None, issued_at: int) -> str:
+def _mac(
+    key: bytes,
+    history: list[dict],
+    session_id: str | None,
+    model: str,
+    total_microusd: int,
+    issued_at: int,
+) -> str:
     payload = json.dumps(
-        {"h": history, "s": session_id, "t": issued_at},
+        {"h": history, "s": session_id, "m": model, "c": total_microusd, "t": issued_at},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -36,10 +45,12 @@ def sign_history(
     history: list[dict],
     session_id: str | None,
     *,
+    model: str,
+    total_microusd: int,
     now: float | None = None,
 ) -> str:
     issued_at = int(time.time() if now is None else now)
-    return f"{issued_at}.{_mac(key, history, session_id, issued_at)}"
+    return f"{issued_at}.{_mac(key, history, session_id, model, total_microusd, issued_at)}"
 
 
 def verify_history(
@@ -48,12 +59,15 @@ def verify_history(
     session_id: str | None,
     token: str | None,
     *,
+    model: str,
+    total_microusd: int,
     now: float | None = None,
 ) -> None:
-    # Only an empty list skips verification (a conversation's first turn has
-    # no history to protect). Anything else malformed must fail, not pass.
-    if history == [] and isinstance(history, list):
-        return
+    if not isinstance(model, str):
+        raise HistoryTokenError("malformed model")
+    # bool is an int subclass; a client sending true must not pass as 1.
+    if not isinstance(total_microusd, int) or isinstance(total_microusd, bool):
+        raise HistoryTokenError("malformed total")
     if not isinstance(history, list) or not all(isinstance(t, dict) for t in history):
         raise HistoryTokenError("malformed history")
     if not isinstance(token, str) or "." not in token:
@@ -61,7 +75,7 @@ def verify_history(
     issued, _, mac = token.partition(".")
     try:
         issued_at = int(issued)
-        expected = _mac(key, history, session_id, issued_at)
+        expected = _mac(key, history, session_id, model, total_microusd, issued_at)
         matches = hmac.compare_digest(expected.encode(), mac.encode())
     except (ValueError, TypeError, RecursionError):
         # Includes UnicodeEncodeError (lone surrogates) and over-long integers.
