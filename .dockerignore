@@ -1,8 +1,12 @@
 # The chat-ui image builds from the repository root (so the index stage can read
 # knowledge-base/). Keep secrets, infra and scratch out of the build context.
 .git
-.env
-env.sh
+# Secrets anywhere in the tree, not just the root.
+**/.env
+**/.env.*
+!**/.env.example
+**/env.sh
+.claude/
 deploy/
 docs/
 .superpowers/
