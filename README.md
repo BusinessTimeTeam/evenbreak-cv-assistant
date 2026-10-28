@@ -72,6 +72,7 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 |---|---|---|
 | `do_token` | *(required)* | DigitalOcean API token |
 | `agent_api_key` | *(required)* | Secret API key the chat UI uses to call the agent. Mint one out-of-band (no provider resource exists); supply via `TF_VAR_agent_api_key` (CI: the `AGENT_API_KEY` repo secret) |
+| `model_access_key` | *(required)* | DO model access key the chat UI uses for serverless inference, at build time (embedding the knowledge base) and run time (chat). Supply via `TF_VAR_model_access_key` (CI: the `MODEL_ACCESS_KEY` repo secret) |
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
 | `basename` | `rag-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
@@ -88,6 +89,26 @@ Use the chat interface to ask questions. The assistant will search your knowledg
 | `guardrail_jailbreak_uuid` | `""` | UUID of the jailbreak detection guardrail |
 | `guardrail_content_mod_uuid` | `""` | UUID of the content moderation guardrail |
 | `guardrail_sensitive_data_uuid` | `""` | UUID of the sensitive data detection guardrail |
+
+### Deploying the app-side retrieval chat UI
+
+The chat UI no longer calls the managed agent: it answers from a knowledge-base
+index built into its image, using DO serverless inference. Before merging this
+change to `main` (merging deploys):
+
+1. Create a model access key for production (DO console → Inference → Model
+   Access Keys; scope it to gpt-oss-20b and Qwen3 Embedding 0.6B, no VPC) and
+   add it as the `MODEL_ACCESS_KEY` GitHub Actions secret.
+2. After the first deploy, check the App Platform build log shows the `index`
+   stage embedding the documents (`Indexed N chunks ...`).
+
+App Platform now builds from the repository root (`source_dir = "/"`), and the
+app's env is no longer in `ignore_changes`, so every `terraform apply` redeploys
+the app (the secret always looks like drift). That is expected.
+
+The agent, knowledge base, guardrails and Spaces bucket are still defined so the
+old agent can be compared against the new pipeline (`evals/compare.py`). They are
+removed in a later step.
 
 ## Terraform outputs
 

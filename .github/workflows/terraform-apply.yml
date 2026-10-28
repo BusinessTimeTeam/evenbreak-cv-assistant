@@ -36,6 +36,8 @@ jobs:
       TF_VAR_spaces_secret_key: ${{ secrets.SPACES_SECRET_KEY }}
       # Agent API key the chat UI uses to call the agent (minted out-of-band).
       TF_VAR_agent_api_key: ${{ secrets.AGENT_API_KEY }}
+      # Model access key the chat UI uses for serverless inference (build + run).
+      TF_VAR_model_access_key: ${{ secrets.MODEL_ACCESS_KEY }}
       # s3 state backend auth (the same DigitalOcean Spaces key).
       AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
