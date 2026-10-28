@@ -100,11 +100,13 @@ def test_build_messages_order():
 
     messages = build_messages("SYSTEM", cv, _passages(), history, MESSAGE)
 
-    assert [m["role"] for m in messages] == ["system", "user", "user", "user", "assistant", "user"]
+    # Passages sit right before the latest message they were retrieved for, so
+    # in a long conversation the model doesn't tie them to an older turn.
+    assert [m["role"] for m in messages] == ["system", "user", "user", "assistant", "user", "user"]
     assert messages[0]["content"] == "SYSTEM"
     assert messages[1] is cv
-    assert "Ask for adjustments early." in messages[2]["content"]
-    assert messages[3:5] == history
+    assert messages[2:4] == history
+    assert "Ask for adjustments early." in messages[4]["content"]
     assert messages[-1] == {"role": "user", "content": MESSAGE}
 
 

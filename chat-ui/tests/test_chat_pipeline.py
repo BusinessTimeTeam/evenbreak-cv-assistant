@@ -80,8 +80,8 @@ def test_chat_sends_system_prompt_cv_and_context_to_model(pipeline):
     assert messages[0]["role"] == "system"
     assert "Evenbreak's UK-focused CV" in messages[0]["content"]
     assert messages[1] == main._cv_message(main._cv_sessions["s1"])
-    assert ADJUSTMENTS in messages[2]["content"]
-    assert messages[3:5] == history
+    assert messages[2:4] == history
+    assert ADJUSTMENTS in messages[4]["content"]
     assert messages[-1] == {"role": "user", "content": "Improve my summary"}
 
 

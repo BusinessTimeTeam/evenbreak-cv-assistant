@@ -102,8 +102,10 @@ def build_messages(
     messages = [{"role": "system", "content": system_prompt}]
     if cv_message:
         messages.append(cv_message)
+    messages.extend(history)
+    # Passages go right before the message they were retrieved for, so in a long
+    # conversation the model doesn't attach them to an older turn.
     if passages:
         messages.append(context_message(passages))
-    messages.extend(history)
     messages.append({"role": "user", "content": message})
     return messages
