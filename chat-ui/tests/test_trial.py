@@ -1,0 +1,123 @@
+"""Tests for the model-trial list, prices and cost ledger."""
+
+import asyncio
+import logging
+
+import trial
+
+
+def _model(name):
+    return next(m for m in trial.MODELS if m.name == name)
+
+
+SONNET = _model("Claude Sonnet 5.5")
+GPT_OSS = _model("gpt-oss-20b")
+EMBEDDING = "qwen3-embedding-0.6b"
+
+
+def test_models_cover_the_spec_table():
+    assert len(trial.MODELS) == 10
+    assert {m.group for m in trial.MODELS} == set(trial.GROUPS)
+    assert (SONNET.group, SONNET.input_price, SONNET.output_price) == ("Premium · closed", 2.00, 10.00)
+    assert (GPT_OSS.group, GPT_OSS.input_price, GPT_OSS.output_price) == ("Budget · open", 0.05, 0.45)
+
+
+def test_every_model_and_the_embedding_model_is_priced():
+    for m in trial.MODELS:
+        assert trial.PRICES[m.id] == (m.input_price, m.output_price)
+    assert trial.PRICES[EMBEDDING] == (0.04, 0.0)
+
+
+def test_find_model():
+    assert trial.find_model(SONNET.id) is SONNET
+    assert trial.find_model("no-such-model") is None
+
+
+def test_cost_is_micro_usd_from_per_million_prices():
+    ledger = trial.Ledger()
+    ledger.record("reply", SONNET.id, 1_000, 500)  # 1000*2 + 500*10 = 7000
+    ledger.record("embed", EMBEDDING, 30, 0)  # 30*0.04 = 1.2
+    assert ledger.microusd() == 7001
+
+
+def test_record_usage_without_a_ledger_is_a_no_op():
+    trial.record_usage(GPT_OSS.id, {"prompt_tokens": 10, "completion_tokens": 2})
+
+
+def test_record_usage_uses_current_purpose():
+    ledger = trial.Ledger()
+    with trial.recording(ledger), trial.purpose("guard"):
+        trial.record_usage(GPT_OSS.id, {"prompt_tokens": 10, "completion_tokens": 2})
+    assert ledger.tokens("guard") == (10, 2)
+    assert ledger.tokens("reply") == (0, 0)
+
+
+def test_record_usage_defaults_to_other_purpose():
+    ledger = trial.Ledger()
+    with trial.recording(ledger):
+        trial.record_usage(GPT_OSS.id, {"prompt_tokens": 4})
+    assert ledger.tokens("other") == (4, 0)
+
+
+def test_missing_usage_counts_zero_and_warns(caplog):
+    ledger = trial.Ledger()
+    with caplog.at_level(logging.WARNING), trial.recording(ledger):
+        trial.record_usage(GPT_OSS.id, None)
+    assert ledger.microusd() == 0
+    assert GPT_OSS.id in caplog.text
+
+
+def test_unpriced_model_counts_zero_and_warns(caplog):
+    ledger = trial.Ledger()
+    with caplog.at_level(logging.WARNING), trial.recording(ledger):
+        trial.record_usage("mystery-model", {"prompt_tokens": 100, "completion_tokens": 100})
+    assert ledger.microusd() == 0
+    assert "mystery-model" in caplog.text
+
+
+def test_usage_from_gathered_tasks_lands_in_one_ledger():
+    ledger = trial.Ledger()
+
+    async def call(name):
+        with trial.purpose(name):
+            await asyncio.sleep(0)
+            trial.record_usage(GPT_OSS.id, {"prompt_tokens": 1, "completion_tokens": 1})
+
+    async def run():
+        with trial.recording(ledger):
+            await asyncio.gather(call("guard"), call("rewrite"))
+
+    asyncio.run(run())
+    assert ledger.tokens("guard") == (1, 1)
+    assert ledger.tokens("rewrite") == (1, 1)
+
+
+def test_cost_log_line_has_fields_and_no_text():
+    ledger = trial.Ledger()
+    ledger.record("reply", SONNET.id, 1_000, 500)
+    line = trial.cost_log_line("chat", "answered", "qa-1", SONNET.id, ledger, 12345)
+    for field in (
+        "kind=chat",
+        "outcome=answered",
+        "session=qa-1",
+        f"model={SONNET.id}",
+        "reply_in=1000",
+        "reply_out=500",
+        "guard_in=0",
+        "guard_out=0",
+        "rewrite_in=0",
+        "rewrite_out=0",
+        "embed_in=0",
+        "turn_usd=0.007000",
+        "total_usd=0.012345",
+    ):
+        assert field in line
+
+
+def test_models_payload_groups_in_order_with_default():
+    payload = trial.models_payload(GPT_OSS.id)
+    assert payload["default"] == GPT_OSS.id
+    assert [g["label"] for g in payload["groups"]] == trial.GROUPS
+    first = payload["groups"][0]["models"][0]
+    assert first == {"id": GPT_OSS.id, "name": "gpt-oss-20b"}
+    assert sum(len(g["models"]) for g in payload["groups"]) == 10
