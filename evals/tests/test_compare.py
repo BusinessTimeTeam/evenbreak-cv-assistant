@@ -20,6 +20,11 @@ def _cvs(tmp_path):
     return tmp_path
 
 
+def _ndjson(*events):
+    body = "".join(json.dumps(e) + "\n" for e in events)
+    return httpx.Response(200, headers={"content-type": "application/x-ndjson"}, content=body.encode())
+
+
 def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
     calls = {"upload": 0, "chat": []}
 
@@ -29,15 +34,15 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
             return httpx.Response(200, json={"session_id": "s-1", "status": "ready"})
         body = json.loads(request.content)
         calls["chat"].append(body)
-        return httpx.Response(
-            200,
-            json={
-                "content": f"new {len(calls['chat'])}",
-                "sources": [{"source": "a.md", "score": 0.9}],
-                "history": [{"role": "user", "content": "echo"}],
-                "history_token": f"token-{len(calls['chat'])}",
-            },
-        )
+        done = {
+            "type": "done",
+            "content": f"new {len(calls['chat'])}",
+            "blocked": None,
+            "sources": [{"source": "a.md", "score": 0.9}],
+            "history": [{"role": "user", "content": "echo"}],
+            "history_token": f"token-{len(calls['chat'])}",
+        }
+        return _ndjson({"type": "answer", "text": "partial"}, done)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
     result = asyncio.run(compare.run_new(CASE, _cvs(tmp_path), "http://app", client=client))
@@ -48,6 +53,26 @@ def test_run_new_uploads_cv_once_and_reuses_session(tmp_path):
     assert calls["chat"][1]["history"] == [{"role": "user", "content": "echo"}]
     assert calls["chat"][1]["history_token"] == "token-1"
     assert result[1] == {"turn": "Follow-up about that?", "answer": "new 2", "sources": ["a.md"]}
+
+
+def test_run_new_records_error_event(tmp_path):
+    chat = []
+
+    def handler(request):
+        if request.url.path == "/api/upload":
+            return httpx.Response(200, json={"session_id": "s-1", "status": "ready"})
+        chat.append(json.loads(request.content))
+        return _ndjson(
+            {"type": "status", "text": "Thinking"},
+            {"type": "error", "error": "boom", "history": [], "history_token": f"err-{len(chat)}"},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://app")
+    result = asyncio.run(compare.run_new(CASE, _cvs(tmp_path), "http://app", client=client))
+
+    assert result[0] == {"turn": "First question?", "answer": "Error: boom", "sources": []}
+    assert result[0]["answer"].startswith("Error: ")
+    assert chat[1]["history_token"] == "err-1"
 
 
 def test_render_report_shows_both_answers_and_sources_per_turn():

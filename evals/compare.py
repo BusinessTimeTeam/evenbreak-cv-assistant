@@ -9,7 +9,8 @@ judge. There is no automatic scoring.
 
 The old agent has been deleted, so its answers are a frozen baseline
 (evals/baseline/old-agent.json). The chat UI is called through /api/upload and
-/api/chat, so it is tested end to end. Run through docker compose (see
+/api/chat (a stream of JSON events, of which only the last is read), so it is
+tested end to end. Run through docker compose (see
 docker-compose.yml, service "evals").
 """
 
@@ -29,7 +30,7 @@ CASES_PATH = EVALS_DIR / "cases.json"
 CVS_DIR = EVALS_DIR / "cvs"
 BASELINE_PATH = EVALS_DIR / "baseline" / "old-agent.json"
 RESULTS_DIR = EVALS_DIR / "results"
-TIMEOUT = httpx.Timeout(180.0)
+TIMEOUT = httpx.Timeout(600.0)
 
 
 def _cv_text(case: dict, cvs_dir: Path) -> str | None:
@@ -64,13 +65,24 @@ async def run_new(
                 "history_token": history_token,
                 "session_id": session_id,
             }
-            resp = await http.post("/api/chat", json=payload)
-            resp.raise_for_status()
-            body = resp.json()
-            answer = body.get("content", "")
-            results.append(
-                {"turn": turn, "answer": answer, "sources": [s["source"] for s in body.get("sources", [])]}
-            )
+            # The reply streams as newline-delimited JSON; the last event is
+            # the final `done` or `error`, so keep only that one.
+            body = {}
+            async with http.stream("POST", "/api/chat", json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if line.strip():
+                        body = json.loads(line)
+            if body.get("type") == "error":
+                results.append({"turn": turn, "answer": "Error: " + body["error"], "sources": []})
+            else:
+                results.append(
+                    {
+                        "turn": turn,
+                        "answer": body.get("content", ""),
+                        "sources": [s["source"] for s in body.get("sources", [])],
+                    }
+                )
             # The server signs the history it returns; send it back unchanged.
             history, history_token = body["history"], body["history_token"]
     return results
