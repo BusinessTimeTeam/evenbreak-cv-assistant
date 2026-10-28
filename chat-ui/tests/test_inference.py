@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 import inference
+import trial
 from inference import InferenceConfig, InferenceError
 
 CONFIG = InferenceConfig(api_key="k")
@@ -127,3 +128,71 @@ def test_config_from_env_requires_model_access_key(monkeypatch):
     assert config.base_url == "https://inference.do-ai.run/v1"
     assert config.chat_model == "openai-gpt-oss-20b"
     assert config.embedding_model == "qwen3-embedding-0.6b"
+
+
+def _chat_response(usage=None):
+    body = {"choices": [{"message": {"role": "assistant", "content": "hi"}}]}
+    if usage is not None:
+        body["usage"] = usage
+    return httpx.Response(200, json=body)
+
+
+def test_chat_records_usage_in_active_ledger():
+    ledger = trial.Ledger()
+    handler = lambda request: _chat_response({"prompt_tokens": 12, "completion_tokens": 3})
+
+    async def run():
+        with trial.recording(ledger), trial.purpose("reply"):
+            await inference.chat(CONFIG, [{"role": "user", "content": "x"}], client=_client(handler))
+
+    asyncio.run(run())
+    assert ledger.tokens("reply") == (12, 3)
+
+
+def test_embed_records_prompt_tokens():
+    ledger = trial.Ledger()
+
+    def handler(request):
+        response = _embedding_response(request)
+        body = json.loads(response.content)
+        body["usage"] = {"prompt_tokens": 7, "total_tokens": 7}
+        return httpx.Response(200, json=body)
+
+    async def run():
+        with trial.recording(ledger), trial.purpose("embed"):
+            await inference.embed(CONFIG, ["a", "b", "c"], batch_size=2, client=_client(handler))
+
+    asyncio.run(run())
+    assert ledger.tokens("embed") == (14, 0)  # two batches
+
+
+def test_chat_without_usage_still_returns_content():
+    ledger = trial.Ledger()
+
+    async def run():
+        with trial.recording(ledger):
+            return await inference.chat(CONFIG, [], client=_client(lambda r: _chat_response()))
+
+    assert asyncio.run(run()) == "hi"
+    assert ledger.microusd() == 0
+
+
+def test_chat_params_override_and_remove_keys():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return _chat_response()
+
+    asyncio.run(
+        inference.chat(
+            CONFIG,
+            [],
+            params={"top_p": None, "max_tokens": None, "max_completion_tokens": 8192},
+            client=_client(handler),
+        )
+    )
+    assert "top_p" not in seen["body"]
+    assert "max_tokens" not in seen["body"]
+    assert seen["body"]["max_completion_tokens"] == 8192
+    assert seen["body"]["temperature"] == 0.2

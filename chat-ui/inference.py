@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 import httpx
 
+import trial
+
 TIMEOUT_SECONDS = 120.0
 
 
@@ -78,6 +80,7 @@ async def embed(
             {"model": config.embedding_model, "input": batch, "encoding_format": "float"},
             client,
         )
+        trial.record_usage(config.embedding_model, data.get("usage"))
         try:
             items = sorted(data["data"], key=lambda item: item["index"])
             batch_vectors = [item["embedding"] for item in items]
@@ -99,21 +102,29 @@ async def chat(
     max_tokens: int = 2048,
     top_p: float = 1.0,
     model: str | None = None,
+    params: dict | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> str:
-    """Run a chat completion and return the first choice's message content."""
-    data = await _post(
-        config,
-        "chat/completions",
-        {
-            "model": model or config.chat_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "top_p": top_p,
-        },
-        client,
-    )
+    """Run a chat completion and return the first choice's message content.
+
+    ``params`` is merged over the request last, so a model can override any
+    setting; a key set to None is removed (some models reject ``top_p`` or want
+    ``max_completion_tokens`` instead of ``max_tokens``).
+    """
+    payload = {
+        "model": model or config.chat_model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+    }
+    for key, value in (params or {}).items():
+        if value is None:
+            payload.pop(key, None)
+        else:
+            payload[key] = value
+    data = await _post(config, "chat/completions", payload, client)
+    trial.record_usage(payload["model"], data.get("usage"))
     try:
         content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
