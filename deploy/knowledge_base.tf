@@ -2,7 +2,7 @@
 # homepage (inline web crawler, below) and the CV documents in the Spaces bucket
 # (spaces_docs data source, below). The bucket itself is defined in spaces.tf.
 # NOTE: Knowledge bases currently only support the tor1 region.
-resource "digitalocean_gradientai_knowledge_base" "kb" {
+resource "digitalocean_agent_platform_knowledge_base" "kb" {
   name                 = "${local.resource_name}-kb"
   project_id           = local.active_project_id
   region               = "tor1"
@@ -41,8 +41,8 @@ resource "digitalocean_gradientai_knowledge_base" "kb" {
 # as a standalone resource (rather than inline on the KB) so it can be managed
 # without forcing the knowledge base to be recreated. The bucket and its objects
 # are defined in spaces.tf.
-resource "digitalocean_gradientai_knowledge_base_data_source" "spaces_docs" {
-  knowledge_base_uuid = digitalocean_gradientai_knowledge_base.kb.id
+resource "digitalocean_agent_platform_knowledge_base_data_source" "spaces_docs" {
+  knowledge_base_uuid = digitalocean_agent_platform_knowledge_base.kb.id
 
   spaces_data_source {
     bucket_name = digitalocean_spaces_bucket.kb_docs.name
@@ -59,7 +59,7 @@ resource "digitalocean_gradientai_knowledge_base_data_source" "spaces_docs" {
 resource "null_resource" "kb_reindex" {
   triggers = {
     docs_hash = sha256(join(",", [for k, o in digitalocean_spaces_bucket_object.kb_docs : o.etag]))
-    ds_uuid   = digitalocean_gradientai_knowledge_base_data_source.spaces_docs.id
+    ds_uuid   = digitalocean_agent_platform_knowledge_base_data_source.spaces_docs.id
   }
 
   provisioner "local-exec" {
@@ -67,7 +67,7 @@ resource "null_resource" "kb_reindex" {
       curl -sf -X POST \
         -H "Authorization: Bearer ${var.do_token}" \
         -H "Content-Type: application/json" \
-        -d '{"knowledge_base_uuid":"${digitalocean_gradientai_knowledge_base.kb.id}","data_source_uuids":["${digitalocean_gradientai_knowledge_base_data_source.spaces_docs.id}"]}' \
+        -d '{"knowledge_base_uuid":"${digitalocean_agent_platform_knowledge_base.kb.id}","data_source_uuids":["${digitalocean_agent_platform_knowledge_base_data_source.spaces_docs.id}"]}' \
         "https://api.digitalocean.com/v2/gen-ai/indexing_jobs"
     EOT
   }

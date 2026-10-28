@@ -1,5 +1,5 @@
 # Managed agent for RAG interactions.
-resource "digitalocean_gradientai_agent" "rag_agent" {
+resource "digitalocean_agent_platform_agent" "rag_agent" {
   name        = "${local.resource_name}-agent"
   description = "RAG Assistant powered by serverless inference with knowledge base retrieval and guardrails."
   # NOTE: GenAI platform is currently only available in tor1.
@@ -42,9 +42,9 @@ resource "digitalocean_gradientai_agent" "rag_agent" {
 # the KB attachment is now first-class Terraform state. Depends implicitly on the
 # agent and KB via their ids. NOTE: on a brand-new KB that is still indexing, this
 # attach can fail; if so, just re-run `terraform apply` once indexing finishes.
-resource "digitalocean_gradientai_agent_knowledge_base_attachment" "kb" {
-  agent_uuid          = digitalocean_gradientai_agent.rag_agent.id
-  knowledge_base_uuid = digitalocean_gradientai_knowledge_base.kb.id
+resource "digitalocean_agent_platform_agent_knowledge_base_attachment" "kb" {
+  agent_uuid          = digitalocean_agent_platform_agent.rag_agent.id
+  knowledge_base_uuid = digitalocean_agent_platform_knowledge_base.kb.id
 }
 
 # Attach guardrails to the agent. There is no provider resource for guardrail
@@ -57,17 +57,17 @@ resource "null_resource" "agent_guardrails" {
     var.guardrail_sensitive_data_uuid != "",
   ]) ? 1 : 0
 
-  depends_on = [digitalocean_gradientai_agent.rag_agent]
+  depends_on = [digitalocean_agent_platform_agent.rag_agent]
 
   triggers = {
-    agent_id   = digitalocean_gradientai_agent.rag_agent.id
+    agent_id   = digitalocean_agent_platform_agent.rag_agent.id
     guardrails = "${var.guardrail_jailbreak_uuid},${var.guardrail_content_mod_uuid},${var.guardrail_sensitive_data_uuid}"
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       set -e
-      AGENT_ID="${digitalocean_gradientai_agent.rag_agent.id}"
+      AGENT_ID="${digitalocean_agent_platform_agent.rag_agent.id}"
       TOKEN="${var.do_token}"
       API="https://api.digitalocean.com/v2/gen-ai"
 

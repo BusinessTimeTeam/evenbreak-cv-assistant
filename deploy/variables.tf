@@ -75,13 +75,13 @@ variable "region" {
 variable "model_name" {
   type        = string
   default     = "OpenAI GPT-oss-20b"
-  description = "Display name of the serverless inference model. Resolved to a UUID via the digitalocean_gradientai_models data source (see models.tf)."
+  description = "Display name of the serverless inference model. Resolved to a UUID via the digitalocean_agent_platform_models data source (see models.tf)."
 }
 
 variable "embedding_model_name" {
   type        = string
   default     = "Qwen3 Embedding 0.6B"
-  description = "Display name of the embedding model. Resolved to a UUID via the digitalocean_gradientai_models data source (see models.tf)."
+  description = "Display name of the embedding model. Resolved to a UUID via the digitalocean_agent_platform_models data source (see models.tf)."
 }
 
 // =============================================================================

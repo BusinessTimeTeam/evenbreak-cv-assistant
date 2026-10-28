@@ -4,7 +4,7 @@ terraform {
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
-      version = "~> 2.85.0"
+      version = "~> 2.106.0"
     }
     # Used by null_resource.agent_post_setup / kb_reindex glue.
     null = {

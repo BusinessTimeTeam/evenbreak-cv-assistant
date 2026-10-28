@@ -174,7 +174,7 @@ Consequences:
 - Editing the inline web-crawler URL **in config has no effect** (it's ignored),
   and editing it directly in the console forces a KB recreation.
 - To add or remove document sources **without** recreating the KB, manage them as
-  separate `digitalocean_gradientai_knowledge_base_data_source` resources (like
+  separate `digitalocean_agent_platform_knowledge_base_data_source` resources (like
   `spaces_docs`) rather than editing the KB's inline `datasources` block.
 
 ## Chat UI

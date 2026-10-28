@@ -6,14 +6,14 @@
 #
 # Model names are unique within the GenAI platform, so each filter resolves to
 # exactly one model.
-data "digitalocean_gradientai_models" "inference" {
+data "digitalocean_agent_platform_models" "inference" {
   filter {
     key    = "name"
     values = [var.model_name]
   }
 }
 
-data "digitalocean_gradientai_models" "embedding" {
+data "digitalocean_agent_platform_models" "embedding" {
   filter {
     key    = "name"
     values = [var.embedding_model_name]
@@ -21,6 +21,6 @@ data "digitalocean_gradientai_models" "embedding" {
 }
 
 locals {
-  model_uuid           = data.digitalocean_gradientai_models.inference.models[0].uuid
-  embedding_model_uuid = data.digitalocean_gradientai_models.embedding.models[0].uuid
+  model_uuid           = data.digitalocean_agent_platform_models.inference.models[0].uuid
+  embedding_model_uuid = data.digitalocean_agent_platform_models.embedding.models[0].uuid
 }
