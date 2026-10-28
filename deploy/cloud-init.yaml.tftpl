@@ -3,8 +3,12 @@
 # Any change to the rendered output replaces the droplet; the server is
 # disposable and the next deploy repopulates it.
 #
-# Every templated value goes through jsonencode(): a JSON string is a valid
-# YAML string, so keys and secrets need no hand-escaping.
+# SSH keys go through jsonencode() (a JSON string is a valid YAML string, so
+# they need no hand-escaping) and secrets through base64encode(). The plain
+# settings (domain, letsencrypt_email, dokku_version and
+# dokku_letsencrypt_version) are inserted raw into the setup script, mostly
+# inside shell quotes, so they must not contain quotes, `$`, backslashes,
+# spaces or newlines.
 #
 # Secrets reach Dokku only through /root/dokku-setup.env (mode 0600, base64
 # encoded values), which the setup script reads and deletes when it exits.
