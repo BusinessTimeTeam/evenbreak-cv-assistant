@@ -17,15 +17,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Build the knowledge-base index. Only the modules the build needs are copied,
 # so editing main.py or static/ reuses the cached index instead of re-embedding;
 # it re-runs when a document (or one of these modules) changes.
-# MODEL_ACCESS_KEY arrives as a build arg (App Platform passes build-time env
+# BUILD_MODEL_ACCESS_KEY, the embedding-only build key, arrives as a build arg (App Platform passes build-time env
 # vars this way). It exists only in this stage: prod copies just the index file.
 # Build args are exported to RUN's environment, and build_index.py reads them
-# from there. Never reference $MODEL_ACCESS_KEY in the RUN line itself: build
+# from there. Never reference $BUILD_MODEL_ACCESS_KEY in the RUN line itself: build
 # output prints RUN commands with build args expanded, which would put the key
 # in the build log.
 FROM deps AS index
 
-ARG MODEL_ACCESS_KEY
+ARG BUILD_MODEL_ACCESS_KEY
 ARG EMBEDDING_MODEL=qwen3-embedding-0.6b
 ARG INFERENCE_BASE_URL=https://inference.do-ai.run/v1
 

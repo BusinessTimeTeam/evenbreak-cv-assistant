@@ -14,8 +14,9 @@ services:
       dockerfile: chat-ui/Dockerfile
       target: prod
       args:
-        # Read from .env for interpolation; only the index stage uses it.
-        MODEL_ACCESS_KEY: ${MODEL_ACCESS_KEY}
+        # Locally one unrestricted dev key (from .env) serves as the build key
+        # too; only the index stage uses it.
+        BUILD_MODEL_ACCESS_KEY: ${MODEL_ACCESS_KEY}
     ports:
       - "8080:8080"
     env_file:

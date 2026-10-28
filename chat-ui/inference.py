@@ -26,10 +26,10 @@ class InferenceConfig:
     embedding_model: str = "qwen3-embedding-0.6b"
 
     @classmethod
-    def from_env(cls) -> "InferenceConfig":
+    def from_env(cls, key_var: str = "MODEL_ACCESS_KEY") -> "InferenceConfig":
         defaults = cls(api_key="")
         return cls(
-            api_key=os.environ["MODEL_ACCESS_KEY"],
+            api_key=os.environ[key_var],
             base_url=os.environ.get("INFERENCE_BASE_URL", defaults.base_url),
             chat_model=os.environ.get("CHAT_MODEL", defaults.chat_model),
             embedding_model=os.environ.get("EMBEDDING_MODEL", defaults.embedding_model),
