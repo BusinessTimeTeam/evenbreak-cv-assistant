@@ -9,8 +9,8 @@ chat model. The reply reaches the browser as newline-delimited JSON events: a
 status line every few seconds while the model thinks, the answer piece by
 piece, then a final event carrying the new conversation state.
 
-Environment variables (injected by terraform via App Platform, or from .env
-locally):
+Environment variables (Dokku config set by the droplet's cloud-init, or from
+.env locally):
     MODEL_ACCESS_KEY   — DO model access key for serverless inference (required)
     HISTORY_SIGNING_KEY — secret that signs conversation history (required)
     INFERENCE_BASE_URL — default https://inference.do-ai.run/v1

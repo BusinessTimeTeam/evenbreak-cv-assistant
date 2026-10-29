@@ -1,7 +1,5 @@
-# Chat UI hosted on a Dokku droplet in London.
-# Replaces App Platform (app.tf), whose 100s request limit and response
-# buffering break streamed replies. Both run side by side until the droplet is
-# confirmed working on var.domain; then app.tf is removed.
+# Chat UI hosted on a Dokku droplet in London. It replaced App Platform, whose
+# 100s request limit and response buffering broke streamed replies.
 #
 # The droplet is disposable: cloud-init (cloud-init.yaml.tftpl) installs Dokku
 # and sets up the app on first boot, so any change to the setup - including a
@@ -10,8 +8,19 @@
 # changes either. The deploy workflow pushes the app once setup has finished.
 #
 # Secrets (MODEL_ACCESS_KEY, HISTORY_SIGNING_KEY, the host private key) end up
-# in the droplet's user_data and in Terraform state, as they already are in
-# state for App Platform.
+# in the droplet's user_data and in Terraform state.
+
+// =============================================================================
+// SECRETS
+// =============================================================================
+
+# Signs the conversation history the browser holds so it cannot be tampered
+# with. Generated once and kept in state; rotating it invalidates open chats
+# (and, being in user_data, replaces the droplet).
+resource "random_password" "history_signing_key" {
+  length  = 64
+  special = false
+}
 
 // =============================================================================
 // SSH KEYS

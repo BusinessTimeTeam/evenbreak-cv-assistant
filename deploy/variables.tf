@@ -43,38 +43,10 @@ variable "project_name" {
   description = "Display name for the DO project. Defaults to basename if empty."
 }
 
-variable "region" {
-  type        = string
-  default     = "nyc3"
-  description = "DigitalOcean region for all resources."
-}
-
-// =============================================================================
-// APP PLATFORM CONFIGURATION
-// =============================================================================
-
-variable "app_instance_size" {
-  type        = string
-  default     = "apps-s-1vcpu-1gb"
-  description = "App Platform instance size slug for the chat UI."
-}
-
-variable "_app_source_repo" {
-  type        = string
-  default     = "BusinessTimeTeam/evenbreak-cv-assistant"
-  description = "GitHub repo (owner/name) hosting the chat-ui app source. Deployed via the DigitalOcean GitHub integration, which must be authorized on this repo."
-}
-
-variable "_app_source_branch" {
-  type        = string
-  default     = "main"
-  description = "Git branch for the app source code."
-}
-
 variable "model_access_key" {
   type        = string
   sensitive   = true
-  description = "DO model access key the chat UI uses for serverless inference at run time (embedding queries and chat), on App Platform and the Dokku droplet. It is not needed to build the image: the knowledge-base index is built locally and committed. Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
+  description = "DO model access key the chat UI uses for serverless inference at run time (embedding queries and chat) on the Dokku droplet. It is not needed to build the image: the knowledge-base index is built locally and committed. Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
 }
 
 // =============================================================================

@@ -6,8 +6,8 @@
 #   deps  — Python + runtime requirements (shared by every stage below)
 #   base  — deps + app source
 #   dev   — adds dev requirements (pytest); used by the chat-ui-test compose service
-#   prod  — the default/final stage App Platform builds (runs uvicorn)
-# `prod` is intentionally last so a plain `docker build` (and App Platform) produces
+#   prod  — the default/final stage Dokku builds (runs uvicorn)
+# `prod` is intentionally last so a plain `docker build` (and Dokku) produces
 # the production image without needing a --target flag.
 FROM python:3.14-slim AS deps
 

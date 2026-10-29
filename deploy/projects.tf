@@ -34,7 +34,6 @@ locals {
 resource "digitalocean_project_resources" "project_resources" {
   project = local.active_project_id
   resources = [
-    digitalocean_app.chat_ui.urn,
     digitalocean_droplet.chat.urn,
     digitalocean_reserved_ip.chat.urn,
   ]

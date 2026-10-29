@@ -7,11 +7,9 @@ A UK-focused CV, employment and disability-inclusion assistant. The stack deploy
 
 - A **Dokku droplet** in London (`lon1`, 2GB RAM) hosting the chat UI on
   `evenbreak-cv.businesstime.team`, which does its own retrieval over a
-  knowledge-base index built into its image. It replaces App Platform, whose
-  100s request limit and response buffering break streamed replies.
-- An **App Platform** service hosting the same chat UI. It is being retired:
-  it runs side by side with the droplet until the droplet is confirmed working,
-  then it is removed.
+  committed knowledge-base index copied into its image. It replaced App
+  Platform, whose 100s request limit and response buffering broke streamed
+  replies.
 - **DigitalOcean serverless inference** for embeddings (Qwen3 Embedding 0.6B) and
   chat (gpt-oss-20b, or the model the user picks during the model trial), called
   directly with a model access key.
@@ -20,9 +18,10 @@ A UK-focused CV, employment and disability-inclusion assistant. The stack deploy
 ## Architecture
 
 ```
-Build:  knowledge-base/data-sources/  ──>  chunk + embed  ──>  index in the image
+Index:  knowledge-base/data-sources/  ──>  chunk + embed  ──>  knowledge-base/index/kb_index.npz
+        (built locally when the documents change, committed, copied into the image)
 
-Chat:   User  ──>  Chat UI (Dokku droplet; App Platform until it is retired)
+Chat:   User  ──>  Chat UI (Dokku droplet)
                        │  rewrite the message into search queries
                        │  embed them and search the in-memory index
                        ▼
@@ -89,8 +88,9 @@ Deploys (`.github/workflows/deploy.yml`) push `main` to
 `ssh://dokku@<reserved_ip>:22/chat-ui` with `dokku/github-action`, and run:
 
 - on every push to `main`
-- after every Terraform apply (`terraform-apply.yml` starts one), in case the
-  apply replaced the droplet
+- when Terraform creates or replaces the droplet
+  (`terraform_data.deploy_new_droplet` starts one through
+  `deploy/trigger-deploy.sh`), whether the apply ran locally or in CI
 - by hand from the Actions tab
 
 Each deploy first waits, up to 20 minutes, until
@@ -107,7 +107,6 @@ it fails until the domain's A record points at the reserved IP.
    registered in the account),
    and commit it: CI reads this file, so a CI apply fails without them.
 2. Run `terraform apply` in `deploy/`, or merge to `main` and let CI apply it.
-   Merging to `main` also redeploys the App Platform app until it's removed.
    Before a local apply:
    - `deploy/env.sh` must export `TF_VAR_model_access_key` with exactly the
      value of the `MODEL_ACCESS_KEY` GitHub secret. Without it, Terraform
@@ -190,8 +189,6 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
 | `basename` | `cv-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
-| `region` | `nyc3` | DigitalOcean region for App Platform resources |
-| `app_instance_size` | `apps-s-1vcpu-1gb` | App Platform instance size slug |
 | `domain` | `evenbreak-cv.businesstime.team` | Domain the droplet serves the chat UI on (its A record is added by hand) |
 | `letsencrypt_email` | *(required)* | Contact email for Let's Encrypt. Set it in `deploy/terraform.tfvars` |
 | `admin_ssh_public_keys` | *(required)* | SSH public keys allowed to log in to the droplet as root. Terraform registers them as DigitalOcean SSH keys, so none may already be in the account. Set them in `deploy/terraform.tfvars` |
@@ -200,10 +197,6 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | `droplet_image` | `ubuntu-24-04-x64` | Droplet image |
 | `dokku_version` | `v0.38.32` | Dokku release installed by cloud-init |
 | `dokku_letsencrypt_version` | `0.25.2` | dokku-letsencrypt plugin release installed by cloud-init |
-
-The app's env is not in `ignore_changes`, so every `terraform apply` redeploys
-the App Platform app (the secret always looks like drift). That is accepted while
-the app is being retired in favour of the Dokku droplet.
 
 Terraform state lives in the `evenbreak-cv-assistant-tfstate` Spaces bucket,
 managed outside Terraform (see `deploy/backend.tf`). The state backend reads its
@@ -216,7 +209,6 @@ credentials from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (CI: the
 |---|---|
 | `app_url` | URL of the deployed chat UI application |
 | `project_id` | Project ID containing all resources |
-| `app_platform_id` | App Platform resource ID |
 | `reserved_ip` | The droplet's reserved IP: the domain's A record and `DOKKU_HOST` |
 | `dokku_ssh_known_hosts` | `known_hosts` line for the droplet's SSH host key: the `DOKKU_KNOWN_HOSTS` secret |
 | `dokku_deploy_private_key` | *(sensitive)* Deploy key for pushing to Dokku: the `DOKKU_SSH_PRIVATE_KEY` secret |
@@ -224,7 +216,6 @@ credentials from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (CI: the
 ## Stack details
 
 - **Droplet region**: `lon1`, via the `droplet_region` variable.
-- **App Platform region**: Configurable via the `region` variable (default `nyc3`).
 - **Inference**: Serverless — no GPU instances to manage.
 - **Resource naming**: All resources are suffixed with a random 4-character string to avoid naming collisions.
 
@@ -353,20 +344,16 @@ Scraper tests: `docker compose run --rm --entrypoint python scrape -m pytest tes
 ## Security
 
 - The `do_token` variable is marked as sensitive and will not appear in Terraform plan output.
-- The model access key is injected as a `SECRET` environment variable in App Platform. It is
-  also a build arg (to embed the knowledge base), so never reference it in a Dockerfile `RUN`
-  line: build output expands build args.
+- The model access key is only needed at run time: image builds copy the committed
+  knowledge-base index and call no API.
 - Chat messages and CV uploads are checked by an app-side guardrail (prompt injection and
   off-topic requests for messages; injection and non-CVs for uploads). A blocked message gets a
   canned reply, and if the check itself fails twice it fails closed and the message is refused.
-- `HISTORY_SIGNING_KEY` is generated by Terraform, held in state and injected as a `SECRET`
-  env var; rotating it invalidates conversations in progress.
+- `HISTORY_SIGNING_KEY` is generated by Terraform and held in state; rotating it invalidates
+  conversations in progress (and replaces the droplet).
 - On the droplet, the model access key and `HISTORY_SIGNING_KEY` are set as Dokku config by
   cloud-init and are also in the droplet's user data and Terraform state. The deploy workflow
   checks the server's host key against the `DOKKU_KNOWN_HOSTS` secret (never `ssh-keyscan`).
-- A merge to `main` triggers both App Platform's deploy-on-push and the CI Terraform apply. If the
-  push build runs before the apply has added `HISTORY_SIGNING_KEY`, that deployment fails to start,
-  App Platform keeps the previous one running, and the apply's redeploy fixes it.
 - The chat UI does not store conversation history server-side; all history is held in the browser session.
 
 ## Future work

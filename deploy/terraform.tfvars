@@ -2,7 +2,6 @@
 # TF_VAR_* environment variables, not this file. See env.sh.example.
 project_uuid = "5382b7ad-d7d6-4785-b012-05a324d07c83"
 basename     = "cv-assistant"
-region       = "lon" # App Platform region slug
 
 # Dokku droplet. letsencrypt_email and admin_ssh_public_keys have no default
 # and must be set here by the user before the first apply
