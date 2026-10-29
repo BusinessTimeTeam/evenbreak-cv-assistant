@@ -5,7 +5,6 @@ basename     = "rag-assistant"
 region       = "lon" # App Platform region slug
 
 # Dokku droplet. letsencrypt_email and admin_ssh_public_keys have no default
-# and must be set here by the user before the first apply (left out on purpose:
-# placeholder values would create a droplet with fake keys and a fake email).
-#   letsencrypt_email     = "you@example.com"
-#   admin_ssh_public_keys = ["ssh-ed25519 AAAA... you@laptop"]
+# and must be set here by the user before the first apply
+letsencrypt_email     = "security@businesstime.team"
+admin_ssh_public_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPWUZ6YEvgbqAoO0GMZPwxmzrAmr4HZHDOK4+Zwxs9HT wmayor@CheshireCat.local"]
