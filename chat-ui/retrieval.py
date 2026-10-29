@@ -6,8 +6,10 @@ brute-force cosine similarity in memory, which stays fast up to tens of
 thousands of chunks. Callers only use ``Index`` and ``build_index``, so the
 storage can be swapped (pgvector, a vector database) without touching them.
 
-This module is copied into the Docker ``index`` stage, so it may only import
-chunking and inference from the app.
+The index is built once with build_index.py and committed to the repository
+(knowledge-base/index/kb_index.npz); the image copies it in. build_index.py
+--check uses ``chunk_documents`` to tell whether the committed index still
+matches the documents.
 """
 
 import hashlib
@@ -24,7 +26,10 @@ import numpy as np
 from chunking import Chunk, chunk_document, load_documents
 from inference import InferenceConfig, embed
 
-REBUILD_HINT = "Rebuild it with `docker compose build chat-ui` (or run build_index.py)."
+REBUILD_HINT = (
+    "Rebuild it with `docker compose --profile tools run --rm index` and commit "
+    "knowledge-base/index/kb_index.npz."
+)
 
 
 class IndexLoadError(Exception):
@@ -73,6 +78,10 @@ class Index:
     @property
     def source_hash(self) -> str:
         return self._source_hash
+
+    @property
+    def chunks(self) -> list[Chunk]:
+        return list(self._chunks)
 
     def __len__(self) -> int:
         return len(self._chunks)
@@ -153,9 +162,18 @@ def source_hash(documents: list[tuple[str, str]]) -> str:
     return digest.hexdigest()
 
 
+def _chunks_of(documents: list[tuple[str, str]]) -> list[Chunk]:
+    return [chunk for source, text in documents for chunk in chunk_document(source, text)]
+
+
+def chunk_documents(root: Path) -> list[Chunk]:
+    """The chunks an index built from ``root`` would hold, without embedding them."""
+    return _chunks_of(load_documents(root))
+
+
 async def build_index(root: Path, config: InferenceConfig) -> Index:
     documents = load_documents(root)
-    chunks = [chunk for source, text in documents for chunk in chunk_document(source, text)]
+    chunks = _chunks_of(documents)
     # Prefix the file name so it contributes to matching; store the plain text.
     vectors = await embed(config, [f"{c.source}\n{c.text}" for c in chunks])
     return Index(

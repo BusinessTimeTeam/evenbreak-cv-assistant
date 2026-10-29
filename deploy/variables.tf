@@ -74,7 +74,7 @@ variable "_app_source_branch" {
 variable "model_access_key" {
   type        = string
   sensitive   = true
-  description = "DO model access key the chat UI uses for serverless inference (embedding the knowledge base at build time, and chat at run time), on App Platform and the Dokku droplet. Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
+  description = "DO model access key the chat UI uses for serverless inference at run time (embedding queries and chat), on App Platform and the Dokku droplet. It is not needed to build the image: the knowledge-base index is built locally and committed. Create one in the DO console (Inference > Model Access Keys) scoped to Qwen3 Embedding 0.6B and the model-trial chat models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3, Kimi K3; see chat-ui/trial.py), and supply via TF_VAR_model_access_key."
 }
 
 // =============================================================================

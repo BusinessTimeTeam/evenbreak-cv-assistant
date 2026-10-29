@@ -72,14 +72,14 @@ def test_load_missing_file_raises_helpful_error(tmp_path):
         Index.load(path, expected_embedding_model=MODEL)
 
     assert str(path) in str(excinfo.value)
-    assert "docker compose build" in str(excinfo.value)
+    assert "docker compose --profile tools run --rm index" in str(excinfo.value)
 
 
 def test_load_corrupt_file_raises_helpful_error(tmp_path):
     path = tmp_path / "kb_index.npz"
     path.write_bytes(b"not an index")
 
-    with pytest.raises(IndexLoadError, match="docker compose build"):
+    with pytest.raises(IndexLoadError, match="docker compose --profile tools run --rm index"):
         Index.load(path, expected_embedding_model=MODEL)
 
 
@@ -89,7 +89,7 @@ def test_load_truncated_index_raises_helpful_error(tmp_path):
     _index().save(path)
     path.write_bytes(path.read_bytes()[: path.stat().st_size // 2])
 
-    with pytest.raises(IndexLoadError, match="docker compose build"):
+    with pytest.raises(IndexLoadError, match="docker compose --profile tools run --rm index"):
         Index.load(path, expected_embedding_model=MODEL)
 
 
@@ -103,7 +103,7 @@ def test_load_index_with_incomplete_metadata_raises_helpful_error(tmp_path):
         metadata=np.array('{"embedding_model": "qwen3-embedding-0.6b"}'),
     )
 
-    with pytest.raises(IndexLoadError, match="docker compose build"):
+    with pytest.raises(IndexLoadError, match="docker compose --profile tools run --rm index"):
         Index.load(path, expected_embedding_model=MODEL)
 
 

@@ -2,7 +2,7 @@ name: Terraform Apply
 
 # Applies the deploy/ Terraform stack on every push to main that touches infra.
 # (Document changes need no apply: App Platform and the Dokku deploy workflow,
-# deploy.yml, rebuild the app, and its index, on every push.) State lives in the
+# deploy.yml, rebuild the app, with the committed index, on every push.) State lives in the
 # DO Spaces s3 backend, so CI works against the same state as local runs.
 #
 # After a successful apply it starts deploy.yml, because an apply may have

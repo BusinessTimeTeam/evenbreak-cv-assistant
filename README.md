@@ -174,7 +174,7 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | Variable | Default | Description |
 |---|---|---|
 | `do_token` | *(required)* | DigitalOcean API token |
-| `model_access_key` | *(required)* | DO model access key the chat UI uses for serverless inference, at build time (embedding the knowledge base) and run time (chat). Supply via `TF_VAR_model_access_key` (CI: the `MODEL_ACCESS_KEY` repo secret) |
+| `model_access_key` | *(required)* | DO model access key the chat UI uses for serverless inference at run time (embedding queries and chat); image builds don't need it. Supply via `TF_VAR_model_access_key` (CI: the `MODEL_ACCESS_KEY` repo secret) |
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
 | `basename` | `cv-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
@@ -190,9 +190,8 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | `dokku_letsencrypt_version` | `0.25.2` | dokku-letsencrypt plugin release installed by cloud-init |
 
 The app's env is not in `ignore_changes`, so every `terraform apply` redeploys
-the app (the secret always looks like drift). That is expected: document changes
-need a redeploy anyway to rebuild the index. After a deploy, the App Platform
-build log shows the `index` stage embedding the documents (`Indexed N chunks ...`).
+the App Platform app (the secret always looks like drift). That is accepted while
+the app is being retired in favour of the Dokku droplet.
 
 Terraform state lives in the `evenbreak-cv-assistant-tfstate` Spaces bucket,
 managed outside Terraform (see `deploy/backend.tf`). The state backend reads its
@@ -272,15 +271,28 @@ docker compose up --build
 
 Open <http://localhost:8080>.
 
-The first build embeds everything in `knowledge-base/data-sources/` into the
-image (about a minute, about 1¢). Later builds reuse the cached index unless a
-document changed. After adding or editing documents, rebuild with:
+The image copies the committed knowledge-base index,
+`knowledge-base/index/kb_index.npz`, so builds call no API and need no key.
+
+**Updating the knowledge base.** The index is built from
+`knowledge-base/data-sources/` once and committed, so changing the documents (or
+the chunking code in `chat-ui/chunking.py`) means rebuilding it. It takes about
+a minute and a half and costs about 1¢, using your `.env` key:
 
 ```bash
-docker compose build chat-ui
+docker compose --profile tools run --rm index
 ```
 
-The index is built on every deploy too, so it is never committed to git.
+Commit `knowledge-base/index/kb_index.npz` in the same change as the documents.
+The deploy workflow checks the committed index against the documents first, and
+fails without deploying if they don't match. To run that check yourself (no API
+calls):
+
+```bash
+docker compose --profile tools run --rm index python build_index.py --check --source /kb/data-sources --out /kb/index/kb_index.npz
+```
+
+Then rebuild the local image to pick up the new index: `docker compose build chat-ui`.
 
 > Running tests: `docker compose run --rm chat-ui-test`
 

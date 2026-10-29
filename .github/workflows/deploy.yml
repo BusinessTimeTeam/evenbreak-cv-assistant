@@ -40,8 +40,34 @@ permissions:
   contents: read
 
 jobs:
+  # The image copies the committed knowledge-base index, so a change to the
+  # documents (or the chunking code) without a rebuilt index would deploy stale
+  # guidance. This re-chunks the documents, with no API calls, and fails the
+  # deploy if they don't match the index. Fix: run
+  # `docker compose --profile tools run --rm index` and commit the index.
+  check-index:
+    name: check the knowledge-base index
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: chat-ui/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r chat-ui/requirements.txt
+
+      - name: Check the index matches the documents
+        working-directory: chat-ui
+        run: python build_index.py --check --source ../knowledge-base/data-sources --out ../knowledge-base/index/kb_index.npz
+
   deploy:
     name: deploy to Dokku
+    needs: check-index
     # Only main is deployed (Dokku's deploy branch), even on a manual run.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

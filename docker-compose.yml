@@ -1,21 +1,19 @@
-# Local development for the chat UI. Builds the same image App Platform ships
-# (from the repository root, so the image's index stage embeds
-# knowledge-base/data-sources/), but mounts the source and runs uvicorn with
-# --reload so edits to main.py and static/index.html apply without a rebuild.
-# The built index lives at /index in the image, outside the mounted /app.
+# Local development for the chat UI. Builds the same image the server ships
+# (from the repository root, so the image can copy the committed index,
+# knowledge-base/index/kb_index.npz), but mounts the source and runs uvicorn
+# with --reload so edits to main.py and static/index.html apply without a
+# rebuild. The index lives at /index in the image, outside the mounted /app.
 #
 # Calls DO serverless inference outbound using MODEL_ACCESS_KEY from .env —
-# no DO services run locally and nothing is exposed inbound. Rebuild the index
-# after editing documents with: docker compose build chat-ui
+# no DO services run locally and nothing is exposed inbound. After editing
+# documents, rebuild the index (the `index` service below), commit it, and
+# rebuild the image: docker compose build chat-ui
 services:
   chat-ui:
     build:
       context: .
       dockerfile: chat-ui/Dockerfile
       target: prod
-      args:
-        # Read from .env for interpolation; only the index stage uses it.
-        MODEL_ACCESS_KEY: ${MODEL_ACCESS_KEY}
     ports:
       - "8080:8080"
     env_file:
@@ -40,6 +38,26 @@ services:
     volumes:
       - ./chat-ui:/app
     command: python -m pytest -v
+
+  # Rebuilds the committed knowledge-base index from knowledge-base/data-sources/
+  # with MODEL_ACCESS_KEY from .env. Run it after changing the documents (or the
+  # chunking code) and commit knowledge-base/index/kb_index.npz with them; CI
+  # fails a deploy whose index doesn't match the documents.
+  #   docker compose --profile tools run --rm index
+  # Check it without rebuilding (no API calls):
+  #   docker compose --profile tools run --rm index python build_index.py --check --source /kb/data-sources --out /kb/index/kb_index.npz
+  index:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: chat-ui/Dockerfile
+      target: dev
+    env_file:
+      - ./.env
+    volumes:
+      - ./chat-ui:/app
+      - ./knowledge-base:/kb
+    command: python build_index.py --source /kb/data-sources --out /kb/index/kb_index.npz
 
   # Manual scraper: turns web pages into knowledge-base documents under
   # knowledge-base/data-sources/web/. Not started by `docker compose up`.

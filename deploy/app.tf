@@ -1,10 +1,11 @@
 # Chat UI deployed on App Platform.
-# Serves a simple web interface that answers from a knowledge-base index built
-# into its image, using DO serverless inference (MODEL_ACCESS_KEY).
+# Serves a simple web interface that answers from the committed knowledge-base
+# index (copied into its image), using DO serverless inference
+# (MODEL_ACCESS_KEY).
 #
 # MODEL_ACCESS_KEY is a SECRET the provider cannot read back, so the env always
-# shows as drift and every apply redeploys the app. That is accepted: pushes
-# that change documents redeploy it anyway to rebuild the index.
+# shows as drift and every apply redeploys the app. That is accepted while the
+# app is being retired in favour of the Dokku droplet (droplet.tf).
 # Signs the conversation history the browser holds so it cannot be tampered
 # with. Generated once and kept in state; rotating it invalidates open chats.
 resource "random_password" "history_signing_key" {
@@ -46,13 +47,13 @@ resource "digitalocean_app" "chat_ui" {
         deploy_on_push = true
       }
 
-      # Build from the repo root so the image's index stage can read
-      # knowledge-base/data-sources/.
+      # Build from the repo root so the image can copy the committed index,
+      # knowledge-base/index/kb_index.npz.
       source_dir      = "/"
       dockerfile_path = "chat-ui/Dockerfile"
 
-      # Needed at build time (embedding the knowledge base; App Platform passes
-      # it to the Dockerfile as a build arg) and at run time (every chat turn).
+      # Needed at run time (every chat turn). The build no longer uses it; the
+      # scope is left as it was because the app is being retired.
       env {
         key   = "MODEL_ACCESS_KEY"
         value = var.model_access_key

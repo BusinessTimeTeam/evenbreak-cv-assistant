@@ -133,12 +133,6 @@ write_files:
       unset MODEL_ACCESS_KEY_B64 HISTORY_SIGNING_KEY_B64
       rm -f "$SECRETS_FILE"
 
-      # The image's index stage needs MODEL_ACCESS_KEY. Dokku exports the
-      # app's config into the docker build environment, so the build arg names
-      # the key without a value: the secret stays out of DOCKER_OPTIONS and
-      # off the docker build command line.
-      dokku docker-options:add "$APP" build "--build-arg MODEL_ACCESS_KEY"
-
       # Streamed replies: no response buffering, long reads. CV uploads: 10MB.
       dokku nginx:set "$APP" proxy-read-timeout 600s
       dokku nginx:set "$APP" proxy-buffering off
