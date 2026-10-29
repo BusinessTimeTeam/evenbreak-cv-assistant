@@ -14,7 +14,9 @@ resource "random_password" "history_signing_key" {
 
 resource "digitalocean_app" "chat_ui" {
   spec {
-    name   = "${local.resource_name}-chat"
+    # Keeps the app's name from before basename became cv-assistant, so the
+    # rename doesn't touch it. The app is removed once the droplet replaces it.
+    name   = "rag-assistant-${local.name_suffix}-chat"
     region = var.region
 
     ingress {

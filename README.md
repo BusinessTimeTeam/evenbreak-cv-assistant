@@ -174,7 +174,7 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | `do_token` | *(required)* | DigitalOcean API token |
 | `model_access_key` | *(required)* | DO model access key the chat UI uses for serverless inference, at build time (embedding the knowledge base) and run time (chat). Supply via `TF_VAR_model_access_key` (CI: the `MODEL_ACCESS_KEY` repo secret) |
 | `project_uuid` | `""` | Existing project UUID (leave empty to create a new project) |
-| `basename` | `rag-assistant` | Base name used to auto-generate resource names |
+| `basename` | `cv-assistant` | Base name used to auto-generate resource names |
 | `project_name` | `""` | Display name for the project (defaults to `basename`) |
 | `region` | `nyc3` | DigitalOcean region for App Platform resources |
 | `app_instance_size` | `apps-s-1vcpu-1gb` | App Platform instance size slug |

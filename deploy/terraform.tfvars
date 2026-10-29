@@ -1,7 +1,7 @@
 # Secrets (do_token, model_access_key) are supplied via
 # TF_VAR_* environment variables, not this file. See env.sh.example.
 project_uuid = "5382b7ad-d7d6-4785-b012-05a324d07c83"
-basename     = "rag-assistant"
+basename     = "cv-assistant"
 region       = "lon" # App Platform region slug
 
 # Dokku droplet. letsencrypt_email and admin_ssh_public_keys have no default

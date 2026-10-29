@@ -27,7 +27,7 @@ variable "project_uuid" {
 
 variable "basename" {
   type        = string
-  default     = "rag-assistant"
+  default     = "cv-assistant"
   description = "The base name used to auto-generate resource names."
 }
 
