@@ -11,6 +11,7 @@ from status import FALLBACK_PHRASES, StatusFeed, clean_status
 CONFIG = InferenceConfig(api_key="k")
 # Enough thinking for the first line to be summarised.
 NOTES = "The user wants help explaining a gap in their CV to employers."
+QUESTION = "How do I explain a gap in my CV?"
 
 
 def _run_feed(summarise, adds=(), seconds=0.2, ledger=None):
@@ -18,7 +19,7 @@ def _run_feed(summarise, adds=(), seconds=0.2, ledger=None):
     emitted = []
 
     async def go():
-        feed = StatusFeed(CONFIG, emitted.append, interval=0.02)
+        feed = StatusFeed(CONFIG, emitted.append, interval=0.02, question=QUESTION, has_cv=False)
         for piece in adds:
             feed.add_thinking(piece)
         task = asyncio.create_task(feed.run())
@@ -59,6 +60,50 @@ def test_fallback_phrases_never_claim_progress():
     assert all(not re.search(r"\b(nearly|almost|done|finish)", p, re.I) for p in FALLBACK_PHRASES)
 
 
+def test_fallback_phrases_never_assume_something_was_shared():
+    # They're shown whatever the turn, including a question with no CV.
+    assert all(not re.search(r"\b(shared|cv|document|upload)", p, re.I) for p in FALLBACK_PHRASES)
+
+
+def _summarise_prompt(monkeypatch, **context):
+    calls = []
+
+    async def fake_chat(config, messages, **kwargs):
+        calls.append(messages)
+        return "Working on it."
+
+    monkeypatch.setattr(status, "chat", fake_chat)
+    asyncio.run(status.summarise(CONFIG, "some thinking", "", **context))
+    return calls[0][-1]["content"]
+
+
+def test_summarise_gives_the_question_and_says_no_cv_is_attached(monkeypatch):
+    prompt = _summarise_prompt(monkeypatch, question="How do I explain a gap?", has_cv=False)
+    assert "How do I explain a gap?" in prompt
+    assert "CV attached: no" in prompt
+
+
+def test_summarise_says_when_a_cv_is_attached(monkeypatch):
+    assert "CV attached: yes" in _summarise_prompt(monkeypatch, question="Improve my CV", has_cv=True)
+
+
+def test_summarise_shortens_a_long_question(monkeypatch):
+    prompt = _summarise_prompt(monkeypatch, question="word " * 1000, has_cv=False)
+    assert prompt.count("word") <= status.QUESTION_MAX_CHARS // 5 + 1
+
+
+def test_feed_gives_the_summariser_the_question_and_cv_flag(monkeypatch):
+    seen = []
+
+    async def fake_summarise(config, new_thinking, previous, **context):
+        seen.append(context)
+        return f"Line {len(seen)}"
+
+    monkeypatch.setattr(status, "summarise", fake_summarise)
+    _run_feed(fake_summarise, adds=(NOTES,))
+    assert seen and seen[0] == {"question": QUESTION, "has_cv": False}
+
+
 def test_summarise_uses_low_effort_on_the_fixed_model(monkeypatch):
     calls = []
 
@@ -67,7 +112,7 @@ def test_summarise_uses_low_effort_on_the_fixed_model(monkeypatch):
         return "**Reframing** your skills."
 
     monkeypatch.setattr(status, "chat", fake_chat)
-    out = asyncio.run(status.summarise(CONFIG, "some thinking", "Earlier line"))
+    out = asyncio.run(status.summarise(CONFIG, "some thinking", "Earlier line", question=QUESTION, has_cv=False))
     kwargs = calls[0]["kwargs"]
     assert out == "Reframing your skills."
     assert kwargs["model"] in (None, CONFIG.chat_model)
@@ -81,7 +126,7 @@ def test_summarise_uses_low_effort_on_the_fixed_model(monkeypatch):
 def test_feed_emits_summaries_of_new_thinking(monkeypatch):
     seen = []
 
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         seen.append(new_thinking)
         return f"Line {len(seen)}"
 
@@ -93,7 +138,7 @@ def test_feed_emits_summaries_of_new_thinking(monkeypatch):
 def test_feed_first_line_is_a_fallback_when_there_is_little_thinking(monkeypatch):
     seen = []
 
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         seen.append(new_thinking)
         return f"Line {len(seen)}"
 
@@ -105,7 +150,7 @@ def test_feed_first_line_is_a_fallback_when_there_is_little_thinking(monkeypatch
 
 
 def test_feed_never_repeats_a_line(monkeypatch):
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         return "Same"
 
     monkeypatch.setattr(status, "summarise", fake_summarise)
@@ -115,7 +160,7 @@ def test_feed_never_repeats_a_line(monkeypatch):
 
 
 def test_feed_falls_back_when_summary_fails(monkeypatch):
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         raise InferenceError("boom")
 
     monkeypatch.setattr(status, "summarise", fake_summarise)
@@ -124,7 +169,7 @@ def test_feed_falls_back_when_summary_fails(monkeypatch):
 
 
 def test_feed_falls_back_when_summary_is_slow(monkeypatch):
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         await asyncio.sleep(1)
         return "Too late"
 
@@ -134,7 +179,7 @@ def test_feed_falls_back_when_summary_is_slow(monkeypatch):
 
 
 def test_feed_summary_cost_lands_in_the_ledger_as_status(monkeypatch):
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         trial.record_usage(CONFIG.chat_model, {"prompt_tokens": 450, "completion_tokens": 50})
         return "Reading your CV."
 

@@ -234,6 +234,8 @@ async def _run_turn(
                 feed = StatusFeed(
                     _config,
                     lambda text: emit({"type": "status", "text": text}),
+                    question=message,
+                    has_cv=cv is not None,
                     interval=STATUS_INTERVAL_SECONDS,
                 )
                 pieces = []

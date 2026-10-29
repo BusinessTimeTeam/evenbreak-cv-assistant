@@ -75,8 +75,9 @@ def pipeline(monkeypatch):
             yield delta
         trial.record_usage(kwargs.get("model") or config.chat_model, REPLY_USAGE)
 
-    async def fake_summarise(config, new_thinking, previous):
+    async def fake_summarise(config, new_thinking, previous, **context):
         calls["summaries"] = calls.get("summaries", 0) + 1
+        calls.setdefault("summary_context", []).append(context)
         trial.record_usage(config.chat_model, STATUS_USAGE)
         return f"Status {calls['summaries']}"
 
@@ -570,6 +571,25 @@ def test_thinking_produces_changing_status_events_before_the_answer(pipeline):
     assert "status" not in types[types.index("answer"):]
     texts = [e["text"] for e in events if e["type"] == "status"]
     assert all(a != b for a, b in zip(texts, texts[1:]))
+
+
+def test_status_summaries_get_the_question_and_no_cv_for_a_qa_turn(pipeline):
+    pipeline["deltas"] = THINKING
+    pipeline["delta_sleep"] = 0.03
+
+    _events(_chat({"message": "How do I explain a gap?", "history": []}))
+
+    assert pipeline["summary_context"][0] == {"question": "How do I explain a gap?", "has_cv": False}
+
+
+def test_status_summaries_know_when_a_cv_is_attached(pipeline):
+    pipeline["deltas"] = THINKING
+    pipeline["delta_sleep"] = 0.03
+    main._cv_sessions["s1"] = {"filename": "cv.docx", "text": "Alex Example", "model": DEFAULT}
+
+    _events(_chat({"message": "Improve my summary", **_signed([], session_id="s1")}))
+
+    assert pipeline["summary_context"][0] == {"question": "Improve my summary", "has_cv": True}
 
 
 def test_blocked_message_streams_only_done(pipeline):
