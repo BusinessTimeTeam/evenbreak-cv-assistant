@@ -5,8 +5,10 @@ name: Terraform Apply
 # deploy.yml, rebuild the app, with the committed index, on every push.) State lives in the
 # DO Spaces s3 backend, so CI works against the same state as local runs.
 #
-# After a successful apply it starts deploy.yml, because an apply may have
-# replaced the Dokku droplet, which comes up empty until the app is pushed.
+# An apply that creates or replaces the Dokku droplet starts deploy.yml from
+# Terraform itself (terraform_data.deploy_new_droplet, via
+# deploy/trigger-deploy.sh), because a new droplet comes up empty until the app
+# is pushed. That uses the gh CLI with this job's token.
 
 on:
   push:
@@ -24,7 +26,7 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write # to start deploy.yml after the apply
+  actions: write # Terraform starts deploy.yml when it replaces the droplet
 
 jobs:
   apply:
@@ -51,12 +53,11 @@ jobs:
       - name: Terraform init
         run: terraform init -input=false
 
-      - name: Terraform apply
-        run: terraform apply -auto-approve -input=false
-
+      # A new droplet starts deploy.yml through gh (trigger-deploy.sh).
       # workflow_dispatch runs are created even when started with the
-      # GITHUB_TOKEN. The deploy waits until the droplet has finished setting up.
-      - name: Start a deploy
+      # GITHUB_TOKEN, and the deploy waits until the droplet has finished
+      # setting up.
+      - name: Terraform apply
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --ref main
+        run: terraform apply -auto-approve -input=false

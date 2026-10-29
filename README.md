@@ -118,7 +118,11 @@ it fails until the domain's A record points at the reserved IP.
      locking, so overlapping applies can corrupt the state.
 3. At the domain's DNS host, add an A record for
    `evenbreak-cv.businesstime.team` pointing at `terraform output -raw reserved_ip`.
-   This is needed once: the reserved IP survives droplet rebuilds.
+   This is needed once: the reserved IP survives droplet rebuilds. The domain's
+   DNS is on Cloudflare: make the record **DNS only** (grey cloud), not proxied.
+   Through the proxy, Cloudflare reaches the droplet over plain HTTP, Dokku
+   redirects that to HTTPS, and browsers loop; the proxy's 100-second timeout
+   could also cut off long streamed replies.
 4. Copy the outputs into the GitHub repo's Actions settings, once:
 
    | GitHub setting | Kind | Value |
@@ -127,10 +131,18 @@ it fails until the domain's A record points at the reserved IP.
    | `DOKKU_KNOWN_HOSTS` | secret | `terraform output -raw dokku_ssh_known_hosts` |
    | `DOKKU_HOST` | variable | `terraform output -raw reserved_ip` |
 
-5. Run the **Deploy** workflow from the Actions tab. It waits for the droplet to
-   finish setting up, deploys, and enables HTTPS. A wrong `DOKKU_KNOWN_HOSTS`
-   or deploy key looks the same as a droplet that is still setting up, so it
-   only fails after the 20-minute readiness wait.
+5. Deploy the app. Every apply that creates or replaces the droplet starts the
+   **Deploy** workflow on `main` for you (`terraform_data.deploy_new_droplet`,
+   through `deploy/trigger-deploy.sh` and the `gh` CLI, so a local apply needs
+   `gh auth login`). The workflow waits for the droplet to finish setting up,
+   deploys, and enables HTTPS. A wrong `DOKKU_KNOWN_HOSTS` or deploy key looks
+   the same as a droplet that is still setting up, so it only fails after the
+   20-minute readiness wait. Until this branch is merged, `deploy.yml` isn't on
+   `main` and the apply only warns: deploy by hand with `deploy/push.sh`.
+
+After this first setup, rebuilding the server (for example after changing the
+setup script or rotating a secret) is just `terraform apply`: the reserved IP,
+host key and GitHub settings stay the same, and the new droplet deploys itself.
 
 ### If the first boot fails
 

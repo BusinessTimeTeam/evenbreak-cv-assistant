@@ -130,3 +130,26 @@ resource "digitalocean_firewall" "chat" {
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
 }
+
+// =============================================================================
+// FIRST DEPLOY
+// =============================================================================
+
+# A new droplet comes up with Dokku set up but no app. When the droplet is
+# created or replaced, start the Deploy workflow on main (trigger-deploy.sh),
+# which waits for first-boot setup and then deploys and enables HTTPS, so a
+# rebuild needs no manual steps, whether the apply runs locally or in CI. It
+# runs after the reserved IP points at the new droplet, which is where the
+# workflow deploys to.
+resource "terraform_data" "deploy_new_droplet" {
+  triggers_replace = digitalocean_droplet.chat.id
+
+  depends_on = [
+    digitalocean_reserved_ip_assignment.chat,
+    digitalocean_firewall.chat,
+  ]
+
+  provisioner "local-exec" {
+    command = "${path.module}/trigger-deploy.sh"
+  }
+}
