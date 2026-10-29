@@ -94,7 +94,7 @@ variable "letsencrypt_email" {
 
 variable "admin_ssh_public_keys" {
   type        = list(string)
-  description = "OpenSSH public keys (one per entry) allowed to log in to the droplet as root, for administration. No default: set them in terraform.tfvars before the first apply."
+  description = "OpenSSH public keys (one per entry) allowed to log in to the droplet as root, for administration. Terraform registers them as DigitalOcean SSH keys, so none may already be registered in the account. No default: set them in terraform.tfvars before the first apply."
 }
 
 variable "droplet_region" {

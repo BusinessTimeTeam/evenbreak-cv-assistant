@@ -102,7 +102,9 @@ it fails until the domain's A record points at the reserved IP.
 ### Setting up a new server
 
 1. In `deploy/terraform.tfvars`, set `letsencrypt_email` and
-   `admin_ssh_public_keys` (your own SSH public keys, for logging in as root),
+   `admin_ssh_public_keys` (your own SSH public keys, for logging in as root;
+   Terraform registers them with DigitalOcean, so they mustn't already be
+   registered in the account),
    and commit it: CI reads this file, so a CI apply fails without them.
 2. Run `terraform apply` in `deploy/`, or merge to `main` and let CI apply it.
    Merging to `main` also redeploys the App Platform app until it's removed.
@@ -180,7 +182,7 @@ keeps them for the droplet's lifetime. That is accepted for the MVP.
 | `app_instance_size` | `apps-s-1vcpu-1gb` | App Platform instance size slug |
 | `domain` | `evenbreak-cv.businesstime.team` | Domain the droplet serves the chat UI on (its A record is added by hand) |
 | `letsencrypt_email` | *(required)* | Contact email for Let's Encrypt. Set it in `deploy/terraform.tfvars` |
-| `admin_ssh_public_keys` | *(required)* | SSH public keys allowed to log in to the droplet as root. Set them in `deploy/terraform.tfvars` |
+| `admin_ssh_public_keys` | *(required)* | SSH public keys allowed to log in to the droplet as root. Terraform registers them as DigitalOcean SSH keys, so none may already be in the account. Set them in `deploy/terraform.tfvars` |
 | `droplet_region` | `lon1` | Region for the droplet and its reserved IP |
 | `droplet_size` | `s-1vcpu-2gb` | Droplet size (2GB RAM, because Dokku builds the image on the droplet) |
 | `droplet_image` | `ubuntu-24-04-x64` | Droplet image |

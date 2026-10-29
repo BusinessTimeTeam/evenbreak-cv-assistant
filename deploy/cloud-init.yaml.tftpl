@@ -20,19 +20,18 @@
 # after the first run, so the setup script is written to run exactly once.
 
 # -----------------------------------------------------------------------------
-# SSH: a stable host key from Terraform, admin keys for root, no passwords
+# SSH: a stable host key from Terraform, no passwords. Root's admin keys come
+# from the droplet's DigitalOcean SSH keys (droplet.tf), not from here.
 # -----------------------------------------------------------------------------
 ssh_deletekeys: true
-ssh_genkeytypes: []
+# The schema needs at least one type. Only ed25519 is listed, and its key is
+# supplied below, so cloud-init generates nothing.
+ssh_genkeytypes: [ed25519]
 ssh_keys:
   ed25519_private: ${jsonencode(host_private_key)}
   ed25519_public: ${jsonencode(host_public_key)}
 disable_root: false
 ssh_pwauth: false
-ssh_authorized_keys:
-%{ for key in admin_ssh_public_keys ~}
-  - ${jsonencode(key)}
-%{ endfor ~}
 
 # -----------------------------------------------------------------------------
 # Patching: unattended security upgrades, rebooting at night when needed
@@ -90,6 +89,12 @@ write_files:
       export DEBIAN_FRONTEND=noninteractive
 
       systemctl enable --now unattended-upgrades
+
+      # A safeguard: if root ever has a password that must be changed at first
+      # login (DigitalOcean emails one when a droplet has no registered SSH
+      # keys), PAM refuses root for sudo, chfn and cron, which breaks the Dokku
+      # install. Clear any forced change. Password SSH stays off.
+      chage -d "$(date +%F)" root
 
       # Install Dokku non-interactively: preseed debconf, then run the pinned
       # bootstrap script. No vhost subdomains (the app gets its own domain),

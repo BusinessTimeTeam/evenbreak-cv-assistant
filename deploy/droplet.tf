@@ -29,6 +29,19 @@ resource "tls_private_key" "host" {
   algorithm = "ED25519"
 }
 
+# The admin keys for logging in as root, registered with DigitalOcean so the
+# droplet is created with them. A droplet created without registered keys gets
+# an emailed root password that must be changed at first login, and until it
+# is, PAM refuses root for sudo and chfn, which breaks the Dokku install.
+# DigitalOcean rejects a public key that's already registered in the account,
+# so a key added by hand in the control panel can't also be listed here.
+resource "digitalocean_ssh_key" "admin" {
+  for_each = toset([for key in var.admin_ssh_public_keys : trimspace(key)])
+
+  name       = "${local.resource_name}-admin-${substr(sha256(each.value), 0, 8)}"
+  public_key = each.value
+}
+
 // =============================================================================
 // DROPLET
 // =============================================================================
@@ -39,13 +52,14 @@ resource "digitalocean_droplet" "chat" {
   size       = var.droplet_size
   image      = var.droplet_image
   monitoring = true
+  # Root's authorized keys. Changing them replaces the droplet.
+  ssh_keys = [for key in digitalocean_ssh_key.admin : key.fingerprint]
 
   # Changing the rendered template replaces the droplet (user_data forces a
   # new resource).
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     domain                    = var.domain
     letsencrypt_email         = var.letsencrypt_email
-    admin_ssh_public_keys     = [for key in var.admin_ssh_public_keys : trimspace(key)]
     dokku_version             = var.dokku_version
     dokku_letsencrypt_version = var.dokku_letsencrypt_version
     host_private_key          = tls_private_key.host.private_key_openssh
