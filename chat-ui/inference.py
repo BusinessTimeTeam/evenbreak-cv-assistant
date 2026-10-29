@@ -38,7 +38,7 @@ class ChatDelta:
 class InferenceConfig:
     api_key: str
     base_url: str = "https://inference.do-ai.run/v1"
-    chat_model: str = "openai-gpt-oss-20b"
+    chat_model: str = "openai-gpt-oss-120b"
     embedding_model: str = "qwen3-embedding-0.6b"
 
     @classmethod

@@ -13,17 +13,17 @@ def _model(name):
 
 
 PRO = _model("DeepSeek V4 Pro")
-GPT_OSS = _model("gpt-oss-20b")
+GPT_OSS = _model("gpt-oss-120b")
 EMBEDDING = "qwen3-embedding-0.6b"
 
 
 def test_models_cover_the_spec_table():
     assert [m.name for m in trial.MODELS] == [
-        "gpt-oss-20b", "DeepSeek V4 Flash", "Qwen 3.5 397B", "DeepSeek V4 Pro", "GLM-5.3", "Kimi K3"
+        "gpt-oss-120b", "DeepSeek V4 Flash", "Qwen 3.5 397B", "DeepSeek V4 Pro", "GLM-5.3", "Kimi K3"
     ]
     assert {m.group for m in trial.MODELS} <= set(trial.GROUPS)
     assert (PRO.group, PRO.input_price, PRO.output_price) == ("Premium · open", 1.74, 3.48)
-    assert (GPT_OSS.group, GPT_OSS.input_price, GPT_OSS.output_price) == ("Budget · open", 0.05, 0.45)
+    assert (GPT_OSS.group, GPT_OSS.input_price, GPT_OSS.output_price) == ("Budget · open", 0.10, 0.70)
 
 
 def test_every_model_and_the_embedding_model_is_priced():
@@ -131,7 +131,7 @@ def test_models_payload_groups_in_order_with_default():
     # Groups keep GROUPS order; groups with no models are left out.
     assert [g["label"] for g in payload["groups"]] == [g for g in trial.GROUPS if "open" in g]
     first = payload["groups"][0]["models"][0]
-    assert first == {"id": GPT_OSS.id, "name": "gpt-oss-20b"}
+    assert first == {"id": GPT_OSS.id, "name": "gpt-oss-120b"}
     assert sum(len(g["models"]) for g in payload["groups"]) == len(trial.MODELS)
 
 

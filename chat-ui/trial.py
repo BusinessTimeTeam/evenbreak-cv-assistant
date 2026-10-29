@@ -43,7 +43,7 @@ GROUPS = ["Budget · open", "Budget · closed", "Mid-range · open", "Premium ·
 # the DigitalOcean account (checked 2026-10-28 with check_models.py). Uncomment
 # them once the account can use them; their groups reappear in the picker.
 MODELS = [
-    TrialModel("openai-gpt-oss-20b", "gpt-oss-20b", "Budget · open", 0.05, 0.45),
+    TrialModel("openai-gpt-oss-120b", "gpt-oss-120b", "Budget · open", 0.10, 0.70),
     TrialModel("deepseek-4-flash", "DeepSeek V4 Flash", "Budget · open", 0.14, 0.28),
     # TrialModel("anthropic-claude-5.5-haiku", "Claude Haiku 5.5", "Budget · closed", 0.10, 0.50),
     # TrialModel("openai-gpt-6-luna", "GPT-6 Luna", "Budget · closed", 0.10, 0.50),

@@ -87,7 +87,7 @@ def test_chat_returns_first_choice_content():
 
     assert reply == "hi"
     assert seen["url"].endswith("/chat/completions")
-    assert seen["body"]["model"] == "openai-gpt-oss-20b"
+    assert seen["body"]["model"] == "openai-gpt-oss-120b"
     assert seen["body"]["messages"] == messages
     assert seen["body"]["temperature"] == 0.2
     assert seen["body"]["max_tokens"] == 2048
@@ -126,7 +126,7 @@ def test_config_from_env_requires_model_access_key(monkeypatch):
 
     assert config.api_key == "secret"
     assert config.base_url == "https://inference.do-ai.run/v1"
-    assert config.chat_model == "openai-gpt-oss-20b"
+    assert config.chat_model == "openai-gpt-oss-120b"
     assert config.embedding_model == "qwen3-embedding-0.6b"
 
 

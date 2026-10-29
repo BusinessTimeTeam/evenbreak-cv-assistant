@@ -14,7 +14,7 @@ Environment variables (Dokku config set by the droplet's cloud-init, or from
     MODEL_ACCESS_KEY   — DO model access key for serverless inference (required)
     HISTORY_SIGNING_KEY — secret that signs conversation history (required)
     INFERENCE_BASE_URL — default https://inference.do-ai.run/v1
-    CHAT_MODEL         — default openai-gpt-oss-20b
+    CHAT_MODEL         — default openai-gpt-oss-120b
     EMBEDDING_MODEL    — default qwen3-embedding-0.6b; must match the index
     INDEX_PATH         — built index file, default /index/kb_index.npz
     RETRIEVAL_K        — passages retrieved per turn, default 10

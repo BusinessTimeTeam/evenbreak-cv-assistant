@@ -11,7 +11,7 @@ A UK-focused CV, employment and disability-inclusion assistant. The stack deploy
   Platform, whose 100s request limit and response buffering broke streamed
   replies.
 - **DigitalOcean serverless inference** for embeddings (Qwen3 Embedding 0.6B) and
-  chat (gpt-oss-20b, or the model the user picks during the model trial), called
+  chat (gpt-oss-120b, or the model the user picks during the model trial), called
   directly with a model access key.
 - A **DigitalOcean project** to group the provisioned resources.
 
@@ -25,7 +25,7 @@ Chat:   User  ──>  Chat UI (Dokku droplet)
                        │  rewrite the message into search queries
                        │  embed them and search the in-memory index
                        ▼
-              Serverless inference (gpt-oss-20b)  ──>  Response
+              Serverless inference (gpt-oss-120b)  ──>  Response
 ```
 
 The query flow works as follows:
@@ -47,7 +47,7 @@ While we choose the long-term chat model, a select group of users picks the
 model for each conversation on the landing page. The choice locks once the
 conversation starts (a CV upload or "Ask a question"); going back starts a new
 conversation. Only the answer uses the chosen model: the guardrail checks and
-query rewriting stay on gpt-oss-20b, and embeddings on Qwen3 Embedding 0.6B.
+query rewriting stay on gpt-oss-120b, and embeddings on Qwen3 Embedding 0.6B.
 
 A strip under the header shows the model and the conversation's running cost,
 covering every model call (CV check, guardrails, query rewriting, embeddings and
@@ -61,7 +61,7 @@ conversation, with token counts by purpose and never any message or CV text:
 Turn cost: kind=chat outcome=answered session=qa-… model=deepseek-4-flash reply_in=3481 reply_out=686 guard_in=565 guard_out=131 rewrite_in=167 rewrite_out=280 embed_in=48 turn_usd=0.000903 total_usd=0.000903
 ```
 
-The trial models are gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3. Claude Haiku 5.5, GPT-6 Luna,
+The trial models are gpt-oss-120b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3. Claude Haiku 5.5, GPT-6 Luna,
 Claude Sonnet 5.5 and GPT-6 Sol are commented out in `chat-ui/trial.py` until
 the DigitalOcean account's subscription tier allows them. Check every trial
 model against the API (IDs, access, request settings) with:
@@ -262,7 +262,7 @@ cp .env.example .env
 
 **2. Create a model access key (one time):** [DO console](https://cloud.digitalocean.com/model-studio/manage-keys)
 → **Create model access key** → **Select models**: Qwen3 Embedding 0.6B and the
-model-trial models (gpt-oss-20b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3; see
+model-trial models (gpt-oss-120b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3; see
 [Model trial](#model-trial-temporary)) → **No VPC network** → copy the secret (it is shown once) into
 `.env` as `MODEL_ACCESS_KEY`.
 
