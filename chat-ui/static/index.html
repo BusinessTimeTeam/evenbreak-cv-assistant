@@ -97,7 +97,12 @@
                         <!-- Model trial: remove after the trial -->
                         <div class="trial-picker">
                             <label class="trial-picker__label" for="modelSelect">AI model for this conversation</label>
-                            <select class="trial-picker__select" id="modelSelect"></select>
+                            <div class="trial-picker__control">
+                                <select class="trial-picker__select" id="modelSelect"></select>
+                                <svg class="trial-picker__chevron" aria-hidden="true" viewBox="0 0 20 20">
+                                    <path d="m5 7.5 5 5 5-5" />
+                                </svg>
+                            </div>
                         </div>
                         <!-- /Model trial -->
                         <p class="landing__notice" id="landingNotice" role="status"></p>
