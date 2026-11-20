@@ -9,7 +9,7 @@ inference.py; then set CHAT_MODEL to the chosen model.
 Costs are integer micro-USD. Prices are USD per million tokens, which is also
 micro-USD per token, so a call costs ``in_tokens * in_price + out_tokens *
 out_price`` micro-USD. Prices are from DigitalOcean's pricing page, checked
-2026-10-28 (the lower prompt-size band where a model has two).
+2026-11-20 (the lower prompt-size band where a model has two).
 
 inference.py reports every response's ``usage`` through ``record_usage``, which
 adds it to the Ledger made current by ``recording`` (a ContextVar, so it also
@@ -47,8 +47,8 @@ MODELS = [
     TrialModel("deepseek-v4-flash-0731", "DeepSeek V4 Flash", "Budget · open", 0.14, 0.28),
     # TrialModel("anthropic-claude-5.5-haiku", "Claude Haiku 5.5", "Budget · closed", 0.10, 0.50),
     # TrialModel("openai-gpt-6-luna", "GPT-6 Luna", "Budget · closed", 0.10, 0.50),
-    TrialModel("qwen3.5-397b-a17b", "Qwen 3.5 397B", "Mid-range · open", 0.55, 3.50),
-    TrialModel("deepseek-v4-pro-0813", "DeepSeek V4 Pro", "Premium · open", 1.74, 3.48),
+    TrialModel("minimax-m2.5", "MiniMax M2.5", "Mid-range · open", 0.30, 1.20),
+    TrialModel("deepseek-v4-pro-0813", "DeepSeek V4 Pro", "Premium · open", 1.32, 3.96),
     TrialModel("glm-5.3", "GLM-5.3", "Premium · open", 1.40, 4.40),
     TrialModel("kimi-k3", "Kimi K3", "Premium · open", 3.00, 15.00, {"top_p": 0.95}),
     # TrialModel("anthropic-claude-sonnet-5.5", "Claude Sonnet 5.5", "Premium · closed", 2.00, 10.00),

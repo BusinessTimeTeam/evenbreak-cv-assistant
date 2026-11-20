@@ -61,7 +61,7 @@ conversation, with token counts by purpose and never any message or CV text:
 Turn cost: kind=chat outcome=answered session=qa-… model=deepseek-v4-flash-0731 reply_in=3481 reply_out=686 guard_in=565 guard_out=131 rewrite_in=167 rewrite_out=280 embed_in=48 turn_usd=0.000903 total_usd=0.000903
 ```
 
-The trial models are gpt-oss-120b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3. Claude Haiku 5.5, GPT-6 Luna,
+The trial models are gpt-oss-120b, DeepSeek V4 Flash, MiniMax M2.5, DeepSeek V4 Pro, GLM-5.3 and Kimi K3. Claude Haiku 5.5, GPT-6 Luna,
 Claude Sonnet 5.5 and GPT-6 Sol are commented out in `chat-ui/trial.py` until
 the DigitalOcean account's subscription tier allows them. Check every trial
 model against the API (IDs, access, request settings) with:
@@ -262,7 +262,7 @@ cp .env.example .env
 
 **2. Create a model access key (one time):** [DO console](https://cloud.digitalocean.com/model-studio/manage-keys)
 → **Create model access key** → **Select models**: Qwen3 Embedding 0.6B and the
-model-trial models (gpt-oss-120b, DeepSeek V4 Flash, Qwen 3.5 397B, DeepSeek V4 Pro, GLM-5.3 and Kimi K3; see
+model-trial models (gpt-oss-120b, DeepSeek V4 Flash, MiniMax M2.5, DeepSeek V4 Pro, GLM-5.3 and Kimi K3; see
 [Model trial](#model-trial-temporary)) → **No VPC network** → copy the secret (it is shown once) into
 `.env` as `MODEL_ACCESS_KEY`.
 

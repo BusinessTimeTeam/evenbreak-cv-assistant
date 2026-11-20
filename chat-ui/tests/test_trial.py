@@ -19,10 +19,10 @@ EMBEDDING = "qwen3-embedding-0.6b"
 
 def test_models_cover_the_spec_table():
     assert [m.name for m in trial.MODELS] == [
-        "gpt-oss-120b", "DeepSeek V4 Flash", "Qwen 3.5 397B", "DeepSeek V4 Pro", "GLM-5.3", "Kimi K3"
+        "gpt-oss-120b", "DeepSeek V4 Flash", "MiniMax M2.5", "DeepSeek V4 Pro", "GLM-5.3", "Kimi K3"
     ]
     assert {m.group for m in trial.MODELS} <= set(trial.GROUPS)
-    assert (PRO.group, PRO.input_price, PRO.output_price) == ("Premium · open", 1.74, 3.48)
+    assert (PRO.group, PRO.input_price, PRO.output_price) == ("Premium · open", 1.32, 3.96)
     assert (GPT_OSS.group, GPT_OSS.input_price, GPT_OSS.output_price) == ("Budget · open", 0.10, 0.70)
 
 
@@ -39,9 +39,9 @@ def test_find_model():
 
 def test_cost_is_micro_usd_from_per_million_prices():
     ledger = trial.Ledger()
-    ledger.record("reply", PRO.id, 1_000, 500)  # 1000*1.74 + 500*3.48 = 3480
+    ledger.record("reply", PRO.id, 1_000, 500)  # 1000*1.32 + 500*3.96 = 3300
     ledger.record("embed", EMBEDDING, 30, 0)  # 30*0.04 = 1.2
-    assert ledger.microusd() == 3481
+    assert ledger.microusd() == 3301
 
 
 def test_record_usage_without_a_ledger_is_a_no_op():
@@ -114,7 +114,7 @@ def test_cost_log_line_has_fields_and_no_text():
         "status_in=0",
         "status_out=0",
         "embed_in=0",
-        "turn_usd=0.003480",
+        "turn_usd=0.003300",
         "total_usd=0.012345",
     ):
         assert field in line
