@@ -44,7 +44,7 @@ GROUPS = ["Budget · open", "Budget · closed", "Mid-range · open", "Premium ·
 # them once the account can use them; their groups reappear in the picker.
 MODELS = [
     TrialModel("openai-gpt-oss-120b", "gpt-oss-120b", "Budget · open", 0.10, 0.70),
-    TrialModel("deepseek-4-flash", "DeepSeek V4 Flash", "Budget · open", 0.14, 0.28),
+    TrialModel("deepseek-v4-flash-0731", "DeepSeek V4 Flash", "Budget · open", 0.14, 0.28),
     # TrialModel("anthropic-claude-5.5-haiku", "Claude Haiku 5.5", "Budget · closed", 0.10, 0.50),
     # TrialModel("openai-gpt-6-luna", "GPT-6 Luna", "Budget · closed", 0.10, 0.50),
     TrialModel("qwen3.5-397b-a17b", "Qwen 3.5 397B", "Mid-range · open", 0.55, 3.50),
