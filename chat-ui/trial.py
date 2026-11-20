@@ -48,7 +48,7 @@ MODELS = [
     # TrialModel("anthropic-claude-5.5-haiku", "Claude Haiku 5.5", "Budget · closed", 0.10, 0.50),
     # TrialModel("openai-gpt-6-luna", "GPT-6 Luna", "Budget · closed", 0.10, 0.50),
     TrialModel("qwen3.5-397b-a17b", "Qwen 3.5 397B", "Mid-range · open", 0.55, 3.50),
-    TrialModel("deepseek-v4-pro", "DeepSeek V4 Pro", "Premium · open", 1.74, 3.48),
+    TrialModel("deepseek-v4-pro-0813", "DeepSeek V4 Pro", "Premium · open", 1.74, 3.48),
     TrialModel("glm-5.3", "GLM-5.3", "Premium · open", 1.40, 4.40),
     TrialModel("kimi-k3", "Kimi K3", "Premium · open", 3.00, 15.00, {"top_p": 0.95}),
     # TrialModel("anthropic-claude-sonnet-5.5", "Claude Sonnet 5.5", "Premium · closed", 2.00, 10.00),
